@@ -12,7 +12,7 @@ redis_client = redis.Redis(host=os.getenv('REDIS_HOST', 'redis'), port=6379, dec
 
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to TaskFlow API"}
+    return "Welcome"
 
 @app.get("/tasks")
 def get_tasks(db: Session = Depends(get_db)):
