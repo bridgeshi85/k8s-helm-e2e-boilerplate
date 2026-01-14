@@ -1,6 +1,6 @@
 src/frontend/node_modules
 src/backend/.venv
-src/backend/__pycache__
+src/backend/__pycache__/*.pyc
 src/frontend/package-lock.json
 .DS_Store
 .env

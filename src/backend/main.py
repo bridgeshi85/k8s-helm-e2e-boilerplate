@@ -1,19 +1,26 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Body
 from sqlalchemy.orm import Session
 import redis
 import os
 import json
+from contextlib import asynccontextmanager # 导入这个
+from models import get_db, Task, Base, engine, TaskCreate 
 
-from models import get_db, Task
+Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="TaskFlow Backend", version="1.0.0")
+app = FastAPI(
+    title="TaskFlow Backend",
+    version="1.0.0",
+    root_path="/api"
+)
 
 # Redis connection
-redis_client = redis.Redis(host=os.getenv('REDIS_HOST', 'redis'), port=6379, decode_responses=True)
+redis_client = redis.Redis(host=os.getenv('REDIS_HOST', 'localhost'), port=6379, decode_responses=True)
+
 
 @app.get("/")
 def read_root():
-    return "Welcome"
+    return {"message": "Welcome to TaskFlow API"}
 
 @app.get("/tasks")
 def get_tasks(db: Session = Depends(get_db)):
@@ -32,16 +39,20 @@ def get_tasks(db: Session = Depends(get_db)):
     return {"tasks": tasks_data}
 
 @app.post("/tasks")
-def create_task(title: str, description: str = "", db: Session = Depends(get_db)):
-    task = Task(title=title, description=description)
-    db.add(task)
+def create_task(task: TaskCreate, db: Session = Depends(get_db)):
+    new_task = Task(title=task.title, description=task.description)
+    
+    db.add(new_task)
     db.commit()
-    db.refresh(task)
+    db.refresh(new_task)
     
-    # Invalidate cache so new data appears immediately
-    redis_client.delete("all_tasks")
+    # 清除缓存
+    try:
+        redis_client.delete("all_tasks")
+    except Exception:
+        pass
     
-    return {"task": {"id": task.id, "title": task.title, "description": task.description}}
+    return {"task": {"id": new_task.id, "title": new_task.title, "description": new_task.description}}
 
 @app.get("/cache/{key}")
 def get_cache(key: str):

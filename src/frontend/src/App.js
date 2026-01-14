@@ -1,36 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import './App.css';
+import React, { useState, useEffect } from "react";
+import "./App.css";
 
 function App() {
   const [tasks, setTasks] = useState([]);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
 
   useEffect(() => {
     fetchTasks();
   }, []);
 
   const fetchTasks = async () => {
-    const response = await fetch('/api/tasks');
+    const response = await fetch("/api/tasks");
     const data = await response.json();
     setTasks(data.tasks);
   };
 
   const addTask = async () => {
-    const response = await fetch('/api/tasks', {
-      method: 'POST',
+    const response = await fetch("/api/tasks", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        "Content-Type": "application/json", // 👈 关键：告诉后端我发的是JSON
       },
-      body: new URLSearchParams({
-        title,
-        description,
+      body: JSON.stringify({
+        title: title,
+        description: description,
       }),
     });
     const data = await response.json();
     setTasks([...tasks, data.task]);
-    setTitle('');
-    setDescription('');
+    setTitle("");
+    setDescription("");
   };
 
   return (
