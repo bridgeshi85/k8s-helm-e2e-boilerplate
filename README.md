@@ -45,7 +45,7 @@ docker-compose up --build
 
 Access the services:
 *   Frontend: `http://localhost:3000` (or configured port)
-*   Backend API Docs: `http://localhost:8000/docs`
+*   Backend API: `http://localhost:8000/tasks`
 
 ### 2. Kubernetes Deployment (Helm)
 
