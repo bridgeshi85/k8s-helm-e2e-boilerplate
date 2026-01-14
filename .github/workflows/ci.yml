@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Build backend
+      uses: docker/build-push-action@v4
+      with:
+        context: ./src/backend
+        push: false
+        tags: taskflow-backend:latest
+
+    - name: Build frontend
+      uses: docker/build-push-action@v4
+      with:
+        context: ./src/frontend
+        push: false
+        tags: taskflow-frontend:latest
+
+    - name: Test backend
+      run: |
+        cd src/backend
+        pip install -r requirements.txt
+        python -m pytest  # Assuming you add tests later
