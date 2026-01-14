@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 import redis
 import os
+import json
 
 from models import get_db, Task
 
@@ -16,8 +17,19 @@ def read_root():
 
 @app.get("/tasks")
 def get_tasks(db: Session = Depends(get_db)):
+    # Try to get from cache
+    cached_tasks = redis_client.get("all_tasks")
+    if cached_tasks:
+        return {"tasks": json.loads(cached_tasks)}
+
+    # If not in cache, get from DB
     tasks = db.query(Task).all()
-    return {"tasks": [{"id": task.id, "title": task.title, "description": task.description} for task in tasks]}
+    tasks_data = [{"id": task.id, "title": task.title, "description": task.description} for task in tasks]
+    
+    # Store in cache for 60 seconds
+    redis_client.setex("all_tasks", 60, json.dumps(tasks_data))
+    
+    return {"tasks": tasks_data}
 
 @app.post("/tasks")
 def create_task(title: str, description: str = "", db: Session = Depends(get_db)):
@@ -25,6 +37,10 @@ def create_task(title: str, description: str = "", db: Session = Depends(get_db)
     db.add(task)
     db.commit()
     db.refresh(task)
+    
+    # Invalidate cache so new data appears immediately
+    redis_client.delete("all_tasks")
+    
     return {"task": {"id": task.id, "title": task.title, "description": task.description}}
 
 @app.get("/cache/{key}")
