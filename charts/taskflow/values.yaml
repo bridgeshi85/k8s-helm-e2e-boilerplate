@@ -4,14 +4,11 @@
 nameOverride: ""
 fullnameOverride: "taskflow"
 
-# -----------------------------------------------------------------------------
-# Backend Application (FastAPI)
-# -----------------------------------------------------------------------------
 backend:
   replicaCount: 1
   image:
-    repository: taskflow-backend
-    tag: latest
+    repository: gto310/taskflow-backend
+    tag: v1.0.0
     # 本地 Kind 开发必须用 Never 或 IfNotPresent，生产环境建议 Always
     pullPolicy: IfNotPresent 
   service:
@@ -29,14 +26,11 @@ backend:
     # 静态环境变量放这里，动态连接串(DB/Redis)建议在 Deployment 模板里拼装
     LOG_LEVEL: "INFO"
 
-# -----------------------------------------------------------------------------
-# Frontend Application (React)
-# -----------------------------------------------------------------------------
 frontend:
   replicaCount: 1
   image:
-    repository: taskflow-frontend
-    tag: latest
+    repository: gto310/taskflow-frontend
+    tag: v1.0.0
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
