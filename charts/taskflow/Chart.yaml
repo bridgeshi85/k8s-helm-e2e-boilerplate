@@ -10,5 +10,5 @@ dependencies:
     version: "17.11.3"
     repository: "https://charts.bitnami.com/bitnami"
   - name: postgresql
-    version: "12.5.1"
+    version: "18.2.0"
     repository: "https://charts.bitnami.com/bitnami"
