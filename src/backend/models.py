@@ -13,15 +13,13 @@ class Task(Base):
     title = Column(String(100), nullable=False)
     description = Column(String(500))
 
-# ✅ 新增：用于接收前端 JSON 请求的 Pydantic 模型
 class TaskCreate(BaseModel):
     title: str
-    description: str = "" # 默认为空字符串
+    description: str = ""
 
-# Database URL should be configured via environment variables
 DATABASE_URL = os.getenv(
     'DATABASE_URL', 
-    "postgresql://taskflow:changeme@localhost:5432/taskflow"  # 本地开发 fallback，使用 localhost
+    "postgresql://taskflow:changeme@localhost:5432/taskflow"
 )
 
 engine = create_engine(DATABASE_URL)
