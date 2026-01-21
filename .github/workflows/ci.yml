@@ -32,12 +32,6 @@ jobs:
         load: true
         tags: taskflow-frontend:latest
 
-    - name: Test backend
-      run: |
-        cd src/backend
-        pip install -r requirements.txt
-        # python -m pytest  # Uncomment when tests are available
-
     - name: Create k8s Kind Cluster
       uses: helm/kind-action@v1.8.0
       with:
@@ -52,18 +46,27 @@ jobs:
       uses: azure/setup-helm@v3
       with:
         version: v3.12.0
+    
+    # Helm Dependency Build
+    - name: Build Helm Dependencies (Redis/Postgres)
+      run: |
+        helm dependency update ./charts/taskflow
 
     - name: Deploy with Helm
       run: |
-        helm install taskflow ./charts/taskflow \
+        helm upgrade --install taskflow ./charts/taskflow \
+          -n taskflow --create-namespace \
           --set backend.image.repository=taskflow-backend \
           --set backend.image.tag=latest \
+          --set backend.image.pullPolicy=Never \
           --set frontend.image.repository=taskflow-frontend \
-          --set frontend.image.tag=latest
+          --set frontend.image.tag=latest \
+          --set frontend.image.pullPolicy=Never
+
 
     - name: Verify Deployment
       run: |
-        kubectl get pods -A
+        kubectl get pods -n taskflow
         # Wait for pods to be ready. Timeout set to 5 minutes.
-        kubectl wait --namespace default --for=condition=ready pod --selector=app.kubernetes.io/instance=taskflow --timeout=300s
-        kubectl get pods -A
+        kubectl wait --namespace taskflow --for=condition=ready pod --selector=app.kubernetes.io/instance=taskflow --timeout=300s
+        kubectl get pods -n taskflow
