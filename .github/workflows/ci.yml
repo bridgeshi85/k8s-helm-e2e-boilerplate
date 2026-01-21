@@ -2,12 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, chore/deploy-in-ci-github-action ]
   pull_request:
     branches: [ main ]
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,6 +21,7 @@ jobs:
       with:
         context: ./src/backend
         push: false
+        load: true
         tags: taskflow-backend:latest
 
     - name: Build frontend
@@ -28,10 +29,41 @@ jobs:
       with:
         context: ./src/frontend
         push: false
+        load: true
         tags: taskflow-frontend:latest
 
     - name: Test backend
       run: |
         cd src/backend
         pip install -r requirements.txt
-        python -m pytest  # Assuming you add tests later
+        # python -m pytest  # Uncomment when tests are available
+
+    - name: Create k8s Kind Cluster
+      uses: helm/kind-action@v1.8.0
+      with:
+        cluster_name: kind
+
+    - name: Load images into Kind
+      run: |
+        kind load docker-image taskflow-backend:latest --name kind
+        kind load docker-image taskflow-frontend:latest --name kind
+
+    - name: Install Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: v3.12.0
+
+    - name: Deploy with Helm
+      run: |
+        helm install taskflow ./charts/taskflow \
+          --set backend.image.repository=taskflow-backend \
+          --set backend.image.tag=latest \
+          --set frontend.image.repository=taskflow-frontend \
+          --set frontend.image.tag=latest
+
+    - name: Verify Deployment
+      run: |
+        kubectl get pods -A
+        # Wait for pods to be ready. Timeout set to 5 minutes.
+        kubectl wait --namespace default --for=condition=ready pod --selector=app.kubernetes.io/instance=taskflow --timeout=300s
+        kubectl get pods -A

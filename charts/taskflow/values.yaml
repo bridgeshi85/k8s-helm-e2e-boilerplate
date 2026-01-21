@@ -1,6 +1,3 @@
-# -----------------------------------------------------------------------------
-# Global Settings
-# -----------------------------------------------------------------------------
 nameOverride: ""
 fullnameOverride: "taskflow"
 
@@ -9,13 +6,11 @@ backend:
   image:
     repository: gto310/taskflow-backend
     tag: v1.0.0
-    # 本地 Kind 开发必须用 Never 或 IfNotPresent，生产环境建议 Always
     pullPolicy: IfNotPresent 
   service:
     type: ClusterIP
     port: 8000
   resources: 
-    # 建议加上资源限制，展示 SDET 对性能和稳定性的关注
     limits:
       cpu: 500m
       memory: 512Mi
@@ -23,7 +18,6 @@ backend:
       cpu: 100m
       memory: 128Mi
   env:
-    # 静态环境变量放这里，动态连接串(DB/Redis)建议在 Deployment 模板里拼装
     LOG_LEVEL: "INFO"
 
 frontend:
@@ -50,7 +44,6 @@ redis:
   architecture: standalone
   auth:
     enabled: false
-  # 固定 Service 名字，方便后端连接：taskflow-redis-master
   fullnameOverride: "taskflow-redis"
 
 # PostgreSQL
