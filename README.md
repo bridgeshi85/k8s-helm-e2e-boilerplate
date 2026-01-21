@@ -1,6 +1,6 @@
 # K8s Helm E2E Boilerplate: TaskFlow
 
-A robust full-stack portfolio project demonstrating a modern DevOps workflow. This project deploys a 3-tier application (React Frontend, FastAPI Backend, Redis/PostgreSQL) using **Helm** on Kubernetes, utilizing **GitHub Actions** for CI/CD
+A robust full-stack portfolio project demonstrating a modern DevOps workflow. This project deploys a 3-tier application (React Frontend, FastAPI Backend, Redis/PostgreSQL) using **Helm** on Kubernetes, utilizing **GitHub Actions** for CI/CD.
 
 ## 🚀 Project Overview
 
@@ -34,105 +34,111 @@ The goal of this project is to showcase a complete production-like environment s
 
 ## 🐳 Building Docker Images
 
-### 1. 准备工作：登录 Docker Hub
+### 1. Preparation: Log in to Docker Hub
 
-首先，你需要确保在终端中已经登录了 Docker Hub。
+First, ensure that you are logged into Docker Hub in your terminal.
 
 ```bash
-# 在终端执行，按提示输入你的 Docker Hub 用户名和密码（或 Access Token）
+# In the terminal, enter your Docker Hub username and password (or Access Token) as prompted
 docker login
 ```
 
-### 2. 执行构建与推送
+### 2. Build and Push
 
-请在项目的根目录下执行以下命令：
+Execute the following commands in the root directory of the project:
 
-A. 构建并推送后端 (Backend)
+A. Build and Push Backend
 
 ```bash
-# 1. 构建镜像 (注意最后的点 .)
+# 1. Build the image (note the dot . at the end)
 docker build -t <your_repo>/taskflow-backend:v1.0.0 ./src/backend
 
-# 2. 推送镜像
+# 2. Push the image
 docker push <your_repo>/taskflow-backend:v1.0.0
 ```
 
-B. 构建并推送前端 (Frontend)
+B. Build and Push Frontend
 
 ```bash
-# 1. 构建镜像
+# 1. Build the image
 docker build -t <your_repo>/taskflow-frontend:v1.0.0 ./src/frontend
 
-# 2. 推送镜像
+# 2. Push the image
 docker push <your_repo>/taskflow-frontend:v1.0.0
 ```
 
 ## 🏃‍♂️ Getting Started
 
 1. install the dependency
-```bash
-# 进入 chart 目录
-cd charts/taskflow
+    ```bash
+    # Enter the chart directory
+    cd charts/taskflow
 
-# 下载依赖 (这会在 charts/ 目录下生成 .tgz 文件)
-helm dependency build
+    # Download dependencies (this will generate .tgz files in the charts/ directory)
+    helm dependency build
 
-# 返回根目录
-cd ../..
-```
+    # Return to the root directory
+    cd ../..
+    ```
 
 2. **Configuration:**
-Check `charts/taskflow/values.yaml` to configure image tags, resource limits, and database credentials.
+  Check `charts/taskflow/values.yaml` to configure image tags, resource limits, and database credentials.
+  
+3. Deploy the application to your Kubernetes cluster.
+    ```bash
+    # Install the chart
+    helm upgrade taskflow ./charts/taskflow -n taskflow --create-namespace --install --create-namespace
+    ```
 
-Deploy the application to your Kubernetes cluster.
+---
+
+## Verify Deployment Status
+
+### 1. Check Pod Status
+
+Run the following command:
+
 ```bash
-
-# Install the chart
-helm upgrade taskflow ./charts/taskflow -n taskflow --create-namespace --install --create-namespace
+kubectl get pods -n taskflow
 ```
 
+> You should see 4 Pods (Frontend, Backend, Redis, Postgres), all in `Running` or `Completed` status.
+>
+> ⚠️ **Note**: If you see `CrashLoopBackOff`, it's usually a DB connection issue or a misconfigured Secret.
 
-阶段二：基础设施验证 (Infrastructure Verification)
-在跑测试用例之前，先确保“路是通的”。
+### 2. Check Service
 
-1. 检查 Pod 状态
-Bash
+Run the following command:
 
-kubectl get pods
-期望结果：你应该看到 4 个 Pod（Frontend, Backend, Redis, Postgres），状态都必须是 Running 或 Completed。 如果看到 CrashLoopBackOff，通常是 DB 连接问题或 Secret 没配对。
+```bash
+kubectl get svc -n taskflow
+```
 
-2. 检查 Service
-Bash
+**Expected Result:**
+> You should see the following Services:
+> - `taskflow-backend`
+> - `taskflow-frontend`
+> - `taskflow-redis-master`
+> - `taskflow-postgresql`
 
-kubectl get svc
-期望结果：看到 taskflow-backend, taskflow-frontend, taskflow-redis-master, taskflow-postgresql。
+---
 
-阶段三：建立测试通道 (Networking)
-由于我们在本地 Kind 环境，Service IP 是集群内部的，你需要通过 port-forward 将服务暴露给宿主机（你的电脑），以便浏览器和 Playwright 可以访问。
 
-1. 开启端口转发
-我们需要转发 Frontend Service。 (假设你在前端 Nginx 里配置了 /api 反向代理转发给后端，那么只需要暴露前端端口即可)
+### 3. Enable Port Forwarding
 
-打开一个新的终端窗口（保持运行）：
 
-Bash
+Open a new terminal window:
 
-# 格式: kubectl port-forward svc/<service-name> <local-port>:<container-port>
-kubectl port-forward svc/taskflow-frontend 8080:80
-如果你的前端 Nginx 没有配置反向代理，你可能还需要单独转发后端：
+```bash
+# Format: kubectl port-forward svc/<service-name> <local-port>:<container-port>
+kubectl port-forward svc/taskflow-frontend -n taskflow
+```
 
-Bash
+Open your browser and go to: [http://localhost:8080](http://localhost:8080)
 
-# (可选) 只有当前端直接调 localhost:8000 时才需要
-kubectl port-forward svc/taskflow-backend 8000:8000
-2. 手动冒烟测试 (Manual Smoke Test)
-打开浏览器访问：http://localhost:8080
+You should able to see page like below:
+![alt text](image.png)
 
-UI 加载：能看到 React 页面吗？
-
-功能测试：输入 Title 和 Description，点击 "Add Task"。
-
-数据验证：刷新页面，Task 还在吗？（如果在，说明 Postgres 写入成功）。
 
 ## 📜 License
 
