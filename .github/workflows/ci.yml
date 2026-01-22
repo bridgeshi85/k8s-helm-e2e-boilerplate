@@ -51,6 +51,10 @@ jobs:
     - name: Build Helm Dependencies (Redis/Postgres)
       run: |
         helm dependency update ./charts/taskflow
+    
+    - name: Lint Helm Chart
+      run: |
+        helm lint ./charts/taskflow
 
     - name: Deploy with Helm
       run: |
@@ -63,10 +67,13 @@ jobs:
           --set frontend.image.tag=latest \
           --set frontend.image.pullPolicy=Never
 
-
     - name: Verify Deployment
       run: |
         kubectl get pods -n taskflow
         # Wait for pods to be ready. Timeout set to 5 minutes.
         kubectl wait --namespace taskflow --for=condition=ready pod --selector=app.kubernetes.io/instance=taskflow --timeout=300s
         kubectl get pods -n taskflow
+
+    - name: Run Helm Tests
+      run: |
+        helm test taskflow -n taskflow
