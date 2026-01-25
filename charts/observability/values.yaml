@@ -1,24 +1,25 @@
-# 关闭 AlertManager
-alertmanager:
-  enabled: false
+kube-prometheus-stack:
+  # 关闭 AlertManager
+  alertmanager:
+    enabled: false
 
-# 关闭 NodeExporter
-nodeExporter:
-  enabled: false
+  # 关闭 NodeExporter
+  nodeExporter:
+    enabled: false
 
-prometheus:
-  prometheusSpec:
-    # 允许 Prometheus 发现不带 Helm Release Label 的 ServiceMonitor
-    serviceMonitorSelectorNilUsesHelmValues: false
-    
-    # 允许匹配任意 Label 的 ServiceMonitor
-    serviceMonitorSelector: {}
-    
-    # 允许跨 Namespace 扫描
-    serviceMonitorNamespaceSelector: {}
+  prometheus:
+    prometheusSpec:
+      # 允许 Prometheus 发现不带 Helm Release Label 的 ServiceMonitor
+      serviceMonitorSelectorNilUsesHelmValues: false
+      
+      # 允许匹配任意 Label 的 ServiceMonitor
+      serviceMonitorSelector: {}
+      
+      # 允许跨 Namespace 扫描
+      serviceMonitorNamespaceSelector: {}
 
-grafana:
-  sidecar:
-    dashboards:
-      enabled: true
-      label: grafana_dashboard
+  grafana:
+    sidecar:
+      dashboards:
+        enabled: true
+        label: grafana_dashboard
