@@ -1,15 +1,31 @@
-apiVersion: v1
-kind: Pod
-metadata:
-  name: {{ include "taskflow.fullname" . }}-test-backend
-  annotations:
-    "helm.sh/hook": test
-    "helm.sh/hook-delete-policy": hook-succeeded
 spec:
-  restartPolicy: Never
   containers:
-  - name: test
-    image: curlimages/curl:latest
-    command: ["/bin/sh", "-c"]
-    args:
-      - "curl -s -f http://{{ include "taskflow.fullname" . }}-backend:{{ .Values.backend.service.port }} | grep -q 'Welcome to TaskFlow API'"
+    - name: test
+      image: curlimages/curl
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          # 1. 发送请求，捕获输出，同时保留 curl 的错误信息 (-S)
+          echo "Testing connection to: http://{{ include "taskflow.fullname" . }}-backend:{{ .Values.backend.service.port }}"
+          
+          RESPONSE=$(curl -s -S -f http://{{ include "taskflow.fullname" . }}-backend:{{ .Values.backend.service.port }})
+          EXIT_CODE=$?
+
+          # 2. 如果 curl 本身就失败了（比如 DNS 解析失败，连接拒绝），直接退出
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "❌ CRITICAL: Failed to connect to backend. Curl exit code: $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
+
+          # 3. 打印实际收到的内容 (关键调试信息)
+          echo "Response received: '$RESPONSE'"
+
+          # 4. 验证内容
+          echo "$RESPONSE" | grep "Welcome to TaskFlow API" > /dev/null
+          if [ $? -eq 0 ]; then
+            echo "🎉 Test PASSED: Response matches expected pattern."
+            exit 0
+          else
+            echo "❌ Test FAILED Actual Response: '$RESPONSE'"
+            exit 1
+          fi
