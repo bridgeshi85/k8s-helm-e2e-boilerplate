@@ -1,0 +1,23 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "taskflow.fullname" . }}-backend
+  labels:
+    {{- include "taskflow.labels" . | nindent 4 }}
+spec:
+  # 1. 告诉 Monitor 去哪个 Namespace 找 Service
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+      
+  # 2. 告诉 Monitor 匹配哪个 Service
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "taskflow.name" . }}
+      app.kubernetes.io/component: backend 
+
+  # 3. 定义抓取端点
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
