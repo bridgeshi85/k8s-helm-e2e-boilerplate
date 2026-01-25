@@ -83,11 +83,16 @@ docker push <your_repo>/taskflow-frontend:v1.0.0
 
 2. **Configuration:**
   Check `charts/taskflow/values.yaml` to configure image tags, resource limits, and database credentials.
-  
-3. Deploy the application to your Kubernetes cluster.
+
+3. **Deploy the observability stack**
+   ```bash
+   helm upgrade --install observability ./charts/observability -n observability --create-namespace
+   ```
+
+4. Deploy the application to your Kubernetes cluster.
     ```bash
     # Install the chart
-    helm upgrade taskflow ./charts/taskflow -n taskflow --create-namespace --install --create-namespace
+    helm upgrade taskflow ./charts/taskflow -n taskflow --create-namespace --install
     ```
 
 ---
