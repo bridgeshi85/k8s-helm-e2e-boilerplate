@@ -1,0 +1,17 @@
+{{- if .Values.grafanaDashboards.enabled }}
+{{- range .Values.grafanaDashboards.dashboards }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- toYaml .labels | nindent 4 }}
+  annotations:
+    {{- toYaml .annotations | nindent 4 }}
+data:
+  {{ .name }}.json: |
+{{ .data | indent 4 }}
+---
+{{- end }}
+{{- end }}

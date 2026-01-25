@@ -1,0 +1,277 @@
+# Observability Stack Configuration
+
+# Prometheus Configuration
+prometheus:
+  enabled: true
+
+  # Prometheus Operator Configuration
+  kube-prometheus-stack:
+    enabled: true
+
+    # Default values for kube-prometheus-stack
+    prometheus:
+      prometheusSpec:
+        retention: 15d
+        retentionSize: 50GB
+        resources:
+          requests:
+            cpu: 500m
+            memory: 2Gi
+          limits:
+            cpu: 1000m
+            memory: 4Gi
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: standard
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 50Gi
+
+    # Grafana Configuration
+    grafana:
+      enabled: true
+      persistence:
+        enabled: true
+        size: 10Gi
+        storageClassName: standard
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+      adminPassword: admin
+      service:
+        type: LoadBalancer
+        port: 80
+      # Pre-configured dashboards
+      dashboards:
+        default:
+          taskflow-dashboard:
+            gnetId: 1860
+            revision: 27
+            datasource: Prometheus
+          node-exporter-full:
+            gnetId: 1860
+            revision: 27
+            datasource: Prometheus
+
+    # AlertManager Configuration
+    alertmanager:
+      enabled: true
+      persistence:
+        enabled: true
+        size: 2Gi
+        storageClassName: standard
+
+    # Node Exporter
+    nodeExporter:
+      enabled: true
+
+    # Kube State Metrics
+    kubeStateMetrics:
+      enabled: true
+
+# Loki Configuration
+# loki:
+  enabled: true
+
+  loki-stack:
+    enabled: true
+
+    # Loki Configuration
+    loki:
+      enabled: true
+      persistence:
+        enabled: true
+        size: 20Gi
+        storageClassName: standard
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+      config:
+        schema_config:
+          configs:
+            - from: 2024-01-01
+              store: boltdb-shipper
+              object_store: filesystem
+              schema: v11
+              index:
+                prefix: index_
+                period: 24h
+        storage_config:
+          boltdb_shipper:
+            active_index_directory: /loki/index
+            cache_location: /loki/cache
+            shared_store: filesystem
+          filesystem:
+            directory: /loki/chunks
+        limits_config:
+          enforce_metric_name: false
+          reject_old_samples: true
+          reject_old_samples_max_age: 168h
+
+    # Promtail Configuration
+    promtail:
+      enabled: true
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+      config:
+        serverPort: 3101
+        clients:
+          - url: http://loki:3100/loki/api/v1/push
+        snippets:
+          pipelineStages:
+            - json:
+                expressions:
+                  output: output
+                  stream: stream
+                  time: time
+            - json:
+                expressions:
+                  level: level
+                source: output
+            - labels:
+                level:
+          scrapeConfigs:
+            - job_name: kubernetes-pods
+              kubernetes_sd_configs:
+                - role: pod
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  action: keep
+                  regex: true
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                  action: replace
+                  target_label: __metrics_path__
+                  regex: (.+)
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: $1:$2
+                  target_label: __address__
+                - action: labelmap
+                  regex: __meta_kubernetes_pod_label_(.+)
+                - source_labels: [__meta_kubernetes_namespace]
+                  action: replace
+                  target_label: kubernetes_namespace
+                - source_labels: [__meta_kubernetes_pod_name]
+                  action: replace
+                  target_label: kubernetes_pod_name
+
+# ServiceMonitor for TaskFlow Application
+serviceMonitor:
+  enabled: true
+  namespace: default
+  selector:
+    matchLabels:
+      app: taskflow-backend
+  endpoints:
+    - port: http
+      path: /api/metrics
+      interval: 15s
+      scrapeTimeout: 10s
+
+# Grafana Dashboards ConfigMaps
+# grafanaDashboards:
+#   enabled: true
+#   dashboards:
+#     - name: taskflow-api-dashboard
+#       labels:
+#         grafana_dashboard: "1"
+#       annotations:
+#         grafana_folder: "TaskFlow"
+#       data: |
+#         {
+#           "dashboard": {
+#             "title": "TaskFlow API Dashboard",
+#             "uid": "taskflow-api",
+#             "tags": ["taskflow", "api"],
+#             "timezone": "browser",
+#             "refresh": "10s",
+#             "panels": [
+#               {
+#                 "title": "Request Rate (RPS)",
+#                 "type": "graph",
+#                 "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+#                 "targets": [
+#                   {
+#                     "expr": "rate(http_requests_total[1m])",
+#                     "legendFormat": "{{method}} {{endpoint}}"
+#                   }
+#                 ]
+#               },
+#               {
+#                 "title": "Request Duration (P99)",
+#                 "type": "graph",
+#                 "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+#                 "targets": [
+#                   {
+#                     "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))",
+#                     "legendFormat": "{{method}} {{endpoint}}"
+#                   }
+#                 ]
+#               },
+#               {
+#                 "title": "Error Rate",
+#                 "type": "graph",
+#                 "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+#                 "targets": [
+#                   {
+#                     "expr": "rate(http_errors_total[1m])",
+#                     "legendFormat": "{{method}} {{endpoint}} {{status_code}}"
+#                   }
+#                 ]
+#               },
+#               {
+#                 "title": "Cache Hit/Miss Ratio",
+#                 "type": "graph",
+#                 "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+#                 "targets": [
+#                   {
+#                     "expr": "rate(cache_hits_total[1m])",
+#                     "legendFormat": "Cache Hits - {{endpoint}}"
+#                   },
+#                   {
+#                     "expr": "rate(cache_misses_total[1m])",
+#                     "legendFormat": "Cache Misses - {{endpoint}}"
+#                   }
+#                 ]
+#               },
+#               {
+#                 "title": "Database Query Rate",
+#                 "type": "graph",
+#                 "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+#                 "targets": [
+#                   {
+#                     "expr": "rate(db_queries_total[1m])",
+#                     "legendFormat": "{{operation}} {{table}}"
+#                   }
+#                 ]
+#               },
+#               {
+#                 "title": "Active Connections",
+#                 "type": "stat",
+#                 "gridPos": {"h": 4, "w": 6, "x": 12, "y": 16},
+#                 "targets": [
+#                   {
+#                     "expr": "active_connections",
+#                     "legendFormat": "Active Connections"
+#                   }
+#                 ]
+#               }
+#             ]
+#           }
+#         }
