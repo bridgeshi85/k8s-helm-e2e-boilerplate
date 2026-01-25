@@ -12,4 +12,26 @@ spec:
     image: curlimages/curl:latest
     command: ["/bin/sh", "-c"]
     args:
-      - "curl -s -f http://{{ include "taskflow.fullname" . }}-backend:{{ .Values.backend.service.port }} | grep -q 'Welcome to TaskFlow API'"
+      - |
+          echo "Testing connection to: http://{{ include "taskflow.fullname" . }}-backend:{{ .Values.backend.service.port }}"
+          
+          RESPONSE=$(curl -s -S -f http://{{ include "taskflow.fullname" . }}-backend:{{ .Values.backend.service.port }})
+          EXIT_CODE=$?
+
+          # 如果 curl 本身就失败了（比如 DNS 解析失败，连接拒绝），直接退出
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "❌ CRITICAL: Failed to connect to backend. Curl exit code: $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
+
+          echo "✅ Actual Response received: '$RESPONSE'"
+
+          # 验证内容
+          echo "$RESPONSE" | grep "Welcome to TaskFlow API" > /dev/null
+          if [ $? -eq 0 ]; then
+            echo "🎉 Test PASSED: Response matches expected pattern."
+            exit 0
+          else
+            echo "❌ Test FAILED: Expected 'Welcome to TaskFlow API' but got '$RESPONSE'"
+            exit 1
+          fi
