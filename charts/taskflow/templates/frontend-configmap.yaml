@@ -17,8 +17,7 @@ data:
             try_files $uri $uri/ /index.html;
         }
 
-        # ✅ 关键点：动态注入后端 Service 地址
-        # 这里使用了 Helm 模板语法，而不是硬编码
+        # 动态注入后端 Service 地址
         location /api/ {
             proxy_pass http://{{ include "taskflow.fullname" . }}-backend:8000/;
             proxy_set_header Host $host;

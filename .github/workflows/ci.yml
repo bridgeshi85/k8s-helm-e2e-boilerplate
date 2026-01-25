@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,6 +21,7 @@ jobs:
       with:
         context: ./src/backend
         push: false
+        load: true
         tags: taskflow-backend:latest
 
     - name: Build frontend
@@ -28,10 +29,51 @@ jobs:
       with:
         context: ./src/frontend
         push: false
+        load: true
         tags: taskflow-frontend:latest
 
-    - name: Test backend
+    - name: Create k8s Kind Cluster
+      uses: helm/kind-action@v1.8.0
+      with:
+        cluster_name: kind
+
+    - name: Load images into Kind
       run: |
-        cd src/backend
-        pip install -r requirements.txt
-        python -m pytest  # Assuming you add tests later
+        kind load docker-image taskflow-backend:latest --name kind
+        kind load docker-image taskflow-frontend:latest --name kind
+
+    - name: Install Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: v3.12.0
+    
+    # Helm Dependency Build
+    - name: Build Helm Dependencies (Redis/Postgres)
+      run: |
+        helm dependency update ./charts/taskflow
+    
+    - name: Lint Helm Chart
+      run: |
+        helm lint ./charts/taskflow
+
+    - name: Deploy with Helm
+      run: |
+        helm upgrade --install taskflow ./charts/taskflow \
+          -n taskflow --create-namespace \
+          --set backend.image.repository=taskflow-backend \
+          --set backend.image.tag=latest \
+          --set backend.image.pullPolicy=Never \
+          --set frontend.image.repository=taskflow-frontend \
+          --set frontend.image.tag=latest \
+          --set frontend.image.pullPolicy=Never
+
+    - name: Verify Deployment
+      run: |
+        kubectl get pods -n taskflow
+        # Wait for pods to be ready. Timeout set to 5 minutes.
+        kubectl wait --namespace taskflow --for=condition=ready pod --selector=app.kubernetes.io/instance=taskflow --timeout=300s
+        kubectl get pods -n taskflow
+
+    - name: Run Helm Tests
+      run: |
+        helm test taskflow -n taskflow
