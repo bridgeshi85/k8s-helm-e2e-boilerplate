@@ -90,21 +90,6 @@ docker push <your_repo>/taskflow-frontend:v1.0.0
     helm upgrade taskflow ./charts/taskflow -n taskflow --create-namespace --install --create-namespace
     ```
 
-4. Validate by helm test
-   ```
-   helm test taskflow -n taskflow
-   ```
-   you should able to see the message below 
-   ```
-    NAMESPACE: taskflow
-    STATUS: deployed
-    REVISION: 6
-    TEST SUITE:     taskflow-test-backend
-    Last Started:   Sun Jan 25 17:27:10 2026
-    Last Completed: Sun Jan 25 17:27:14 2026
-    Phase:          Succeeded
-    ```
-
 ---
 
 ## Verify Deployment Status
@@ -135,6 +120,21 @@ kubectl get svc -n taskflow
 > - `taskflow-frontend`
 > - `taskflow-redis-master`
 > - `taskflow-postgresql`
+
+Validate by helm test
+```
+helm test taskflow -n taskflow
+```
+you should able to see the message below 
+```
+NAMESPACE: taskflow
+STATUS: deployed
+REVISION: 6
+TEST SUITE:     taskflow-test-backend
+Last Started:   Sun Jan 25 17:27:10 2026
+Last Completed: Sun Jan 25 17:27:14 2026
+Phase:          Succeeded
+```
 
 ---
 

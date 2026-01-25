@@ -1,24 +1,12 @@
 version: '3.8'
 
 services:
-  backend:
-    build: ./src/backend
+  prometheus:
+    image: prom/prometheus:latest
     ports:
-      - "8000:8000"
-    environment:
-      - REDIS_HOST=redis
-      - DATABASE_URL=postgresql://taskflow:changeme@postgres:5432/taskflow
-    depends_on:
-      - redis
-      - postgres
-
-  frontend:
-    build: ./src/frontend
-    ports:
-      - "3000:80"
-    depends_on:
-      - backend
-
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
   redis:
     image: redis:7-alpine
     ports:

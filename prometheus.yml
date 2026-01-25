@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 5s # 调试时设短一点，方便快速看结果
+
+scrape_configs:
+  - job_name: 'fastapi-backend'
+    static_configs:
+      - targets: ['host.docker.internal:8000']

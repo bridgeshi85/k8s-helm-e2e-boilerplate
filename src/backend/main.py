@@ -68,20 +68,7 @@ active_connections = Gauge(
     'Number of active connections'
 )
 
-# ========== Instrumentator Setup ==========
-instrumentator = Instrumentator(
-    should_group_status_codes=False,
-    should_ignore_untemplated=True,
-    should_group_untemplated=True,
-    should_instrument_requests_inprogress=True,
-    should_instrument_requests_duration=True,
-    excluded_handlers=["/metrics"],
-    env_var_name="ENABLE_METRICS",
-    inprogress_name="fastapi_inprogress",
-    inprogress_labels=True,
-)
 
-instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 # Redis connection
 redis_client = redis.Redis(host=os.getenv('REDIS_HOST', 'localhost'), port=6379, decode_responses=True)
@@ -145,6 +132,10 @@ def get_cache(key: str):
 def set_cache(key: str, value: str):
     redis_client.set(key, value)
     return {"message": "Cached successfully"}
+
+# ========== Instrumentator Setup ==========
+Instrumentator().instrument(app).expose(app)
+
 
 if __name__ == "__main__":
     import uvicorn
