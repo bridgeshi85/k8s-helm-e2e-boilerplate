@@ -6,6 +6,7 @@ import json
 from models import get_db, Task, Base, engine, TaskCreate
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from logging_config import setup_logging
 
 Base.metadata.create_all(bind=engine)
 
@@ -68,26 +69,26 @@ active_connections = Gauge(
     'Number of active connections'
 )
 
-
-
-# Redis connection
-redis_client = redis.Redis(host=os.getenv('REDIS_HOST', 'localhost'), port=6379, decode_responses=True)
+setup_logging()
 
 
 @app.get("/")
 def read_root():
+    app.logger.info("health_check", extra={"event": "root"})
     http_requests_total.labels(method="GET", endpoint="/", status="200").inc()
     return {"message": "Welcome to TaskFlow API"}
+
 
 @app.get("/tasks")
 def get_tasks(db: Session = Depends(get_db)):
     # Try to get from cache
     cached_tasks = redis_client.get("all_tasks")
     if cached_tasks:
+        app.logger.debug("cache_hit", extra={"endpoint": "/tasks"})
         cache_hits_total.labels(endpoint="/tasks").inc()
-        db_queries_total.labels(operation="none", table="none").inc()
         return {"tasks": json.loads(cached_tasks)}
 
+    app.logger.debug("cache_miss", extra={"endpoint": "/tasks"})
     # Cache miss
     cache_misses_total.labels(endpoint="/tasks").inc()
 
@@ -101,8 +102,10 @@ def get_tasks(db: Session = Depends(get_db)):
 
     return {"tasks": tasks_data}
 
+
 @app.post("/tasks")
 def create_task(task: TaskCreate, db: Session = Depends(get_db)):
+    app.logger.info("task_create", extra={"title": task.title})
     new_task = Task(title=task.title, description=task.description)
 
     db.add(new_task)
@@ -119,6 +122,7 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
 
     return {"task": {"id": new_task.id, "title": new_task.title, "description": new_task.description}}
 
+
 @app.get("/cache/{key}")
 def get_cache(key: str):
     value = redis_client.get(key)
@@ -128,15 +132,18 @@ def get_cache(key: str):
         cache_misses_total.labels(endpoint="/cache/{key}").inc()
     return {"key": key, "value": value}
 
+
 @app.post("/cache")
 def set_cache(key: str, value: str):
+    app.logger.debug("cache_set", extra={"key": key})
     redis_client.set(key, value)
     return {"message": "Cached successfully"}
 
-# ========== Instrumentator Setup ==========
-Instrumentator().instrument(app).expose(app)
 
+# ========== Instrumental Setup ==========
+Instrumentator().instrument(app).expose(app)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

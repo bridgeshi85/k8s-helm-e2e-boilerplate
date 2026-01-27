@@ -23,3 +23,15 @@ kube-prometheus-stack:
       dashboards:
         enabled: true
         label: grafana_dashboard
+    adminUser: admin
+    adminPassword: strongpassword
+
+  # 关掉这些在 Kind 里抓不到或者不需要的组件
+  kubeEtcd:
+    enabled: false
+  kubeControllerManager:
+    enabled: false
+  kubeScheduler:
+    enabled: false
+  kubeProxy:
+    enabled: false

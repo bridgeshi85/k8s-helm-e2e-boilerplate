@@ -5,3 +5,4 @@ psycopg2-binary==2.9.9
 redis==7.1.0
 prometheus-fastapi-instrumentator==7.0.0
 prometheus-client==0.24.1
+python-logging-loki==0.3.1
