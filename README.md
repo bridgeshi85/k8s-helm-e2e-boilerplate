@@ -151,7 +151,7 @@ Open a new terminal window:
 
 ```bash
 # Format: kubectl port-forward svc/<service-name> <local-port>:<container-port>
-kubectl port-forward svc/taskflow-frontend -n taskflow
+kubectl port-forward svc/taskflow-frontend -n taskflow 8080:80
 ```
 
 Open your browser and go to: [http://localhost:8080](http://localhost:8080)
