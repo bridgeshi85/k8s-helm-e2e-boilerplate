@@ -1,16 +1,37 @@
 version: '3.8'
 
 services:
+  gateway:
+    build:
+      context: ./src/gateway
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+  worker:
+    build:
+      context: ./src/worker
+    environment:
+      - DATABASE_URL=postgresql://taskflow:changeme@postgres:5432/taskflow
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - TASK_QUEUE_NAME=task_queue
+    depends_on:
+      - postgres
+      - rabbitmq
+
   prometheus:
     image: prom/prometheus:latest
     ports:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
-  redis:
-    image: redis:7-alpine
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
     ports:
-      - "6379:6379"
+      - "5672:5672"
+      - "15672:15672"
 
   postgres:
     image: postgres:15-alpine
@@ -22,6 +43,17 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./src/backend
+    environment:
+      - DATABASE_URL=postgresql://taskflow:changeme@postgres:5432/taskflow
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - TASK_QUEUE_NAME=task_queue
+    depends_on:
+      - postgres
+      - rabbitmq
 
 volumes:
   postgres_data:

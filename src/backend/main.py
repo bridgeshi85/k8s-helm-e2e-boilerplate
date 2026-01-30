@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Depends, Body
+from fastapi import FastAPI, Depends, status
 from sqlalchemy.orm import Session
-import redis
+import aio_pika
 import os
 import json
 from models import get_db, Task, Base, engine, TaskCreate
@@ -16,8 +16,23 @@ app = FastAPI(
     root_path="/api"
 )
 
-# Redis connection
-redis_client = redis.Redis(host=os.getenv('REDIS_HOST', 'localhost'), port=6379, decode_responses=True)
+# RabbitMQ settings
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+TASK_QUEUE_NAME = os.getenv("TASK_QUEUE_NAME", "task_queue")
+
+
+async def publish_task_created(task_id: int) -> None:
+    connection = await aio_pika.connect_robust(RABBITMQ_URL)
+    async with connection:
+        channel = await connection.channel()
+        await channel.declare_queue(TASK_QUEUE_NAME, durable=True)
+        message = aio_pika.Message(
+            body=json.dumps({"task_id": task_id}).encode(),
+            content_type="application/json",
+            delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+            type="OrderCreated",
+        )
+        await channel.default_exchange.publish(message, routing_key=TASK_QUEUE_NAME)
 
 # ========== Custom Prometheus Metrics (RED Method) ==========
 
@@ -41,19 +56,6 @@ http_request_duration_seconds = Histogram(
     'HTTP request latency in seconds',
     ['method', 'endpoint'],
     buckets=[0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0]
-)
-
-# Cache hit/miss metrics
-cache_hits_total = Counter(
-    'cache_hits_total',
-    'Total cache hits',
-    ['endpoint']
-)
-
-cache_misses_total = Counter(
-    'cache_misses_total',
-    'Total cache misses',
-    ['endpoint']
 )
 
 # Database query metrics
@@ -81,32 +83,26 @@ def read_root():
 
 @app.get("/tasks")
 def get_tasks(db: Session = Depends(get_db)):
-    # Try to get from cache
-    cached_tasks = redis_client.get("all_tasks")
-    if cached_tasks:
-        app.logger.debug("cache_hit", extra={"endpoint": "/tasks"})
-        cache_hits_total.labels(endpoint="/tasks").inc()
-        return {"tasks": json.loads(cached_tasks)}
-
-    app.logger.debug("cache_miss", extra={"endpoint": "/tasks"})
-    # Cache miss
-    cache_misses_total.labels(endpoint="/tasks").inc()
-
-    # If not in cache, get from DB
+    # Get from DB
     db_queries_total.labels(operation="select", table="tasks").inc()
     tasks = db.query(Task).all()
-    tasks_data = [{"id": task.id, "title": task.title, "description": task.description} for task in tasks]
-
-    # Store in cache for 60 seconds
-    redis_client.setex("all_tasks", 60, json.dumps(tasks_data))
+    tasks_data = [
+        {
+            "id": task.id,
+            "title": task.title,
+            "description": task.description,
+            "status": task.status,
+        }
+        for task in tasks
+    ]
 
     return {"tasks": tasks_data}
 
 
-@app.post("/tasks")
-def create_task(task: TaskCreate, db: Session = Depends(get_db)):
+@app.post("/tasks", status_code=status.HTTP_202_ACCEPTED)
+async def create_task(task: TaskCreate, db: Session = Depends(get_db)):
     app.logger.info("task_create", extra={"title": task.title})
-    new_task = Task(title=task.title, description=task.description)
+    new_task = Task(title=task.title, description=task.description, status="PENDING")
 
     db.add(new_task)
     db.commit()
@@ -114,31 +110,16 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
 
     db_queries_total.labels(operation="insert", table="tasks").inc()
 
-    # 清除缓存
-    try:
-        redis_client.delete("all_tasks")
-    except Exception:
-        pass
+    await publish_task_created(new_task.id)
 
-    return {"task": {"id": new_task.id, "title": new_task.title, "description": new_task.description}}
-
-
-@app.get("/cache/{key}")
-def get_cache(key: str):
-    value = redis_client.get(key)
-    if value:
-        cache_hits_total.labels(endpoint="/cache/{key}").inc()
-    else:
-        cache_misses_total.labels(endpoint="/cache/{key}").inc()
-    return {"key": key, "value": value}
-
-
-@app.post("/cache")
-def set_cache(key: str, value: str):
-    app.logger.debug("cache_set", extra={"key": key})
-    redis_client.set(key, value)
-    return {"message": "Cached successfully"}
-
+    return {
+        "task": {
+            "id": new_task.id,
+            "title": new_task.title,
+            "description": new_task.description,
+            "status": new_task.status,
+        }
+    }
 
 # ========== Instrumental Setup ==========
 Instrumentator().instrument(app).expose(app)

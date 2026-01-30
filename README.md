@@ -6,8 +6,11 @@ A robust full-stack portfolio project demonstrating a modern DevOps workflow. Th
 
 The goal of this project is to showcase a complete production-like environment setup and automated testing pipeline.
 *   **Frontend**: React application served via Nginx.
+*   **Gateway**: Nginx API Gateway for routing and chaos testing.
 *   **Backend**: Python FastAPI service.
-*   **Databases**: PostgreSQL (persistent storage) and Redis (caching).
+*   **Worker**: Python worker service for async task processing.
+*   **Message Broker**: RabbitMQ for event-driven task dispatching.
+*   **Database**: PostgreSQL (persistent storage).
 *   **Infrastructure**: Kubernetes (K8s) managed via Helm Charts.
 *   **CI/CD**: GitHub Actions pipeline for building Docker images, linting, and running tests.
 
@@ -81,8 +84,8 @@ docker push <your_repo>/taskflow-frontend:v1.0.0
     cd ../..
     ```
 
-2. **Configuration:**
-  Check `charts/taskflow/values.yaml` to configure image tags, resource limits, and database credentials.
+ 2. **Configuration:**
+  Check `charts/taskflow/values.yaml` to configure image tags, resource limits, and database credentials. Update the new images for Gateway and Worker if needed.
 
 3. **Deploy the observability stack**
    ```bash
@@ -107,7 +110,7 @@ Run the following command:
 kubectl get pods -n taskflow
 ```
 
-> You should see 4 Pods (Frontend, Backend, Redis, Postgres), all in `Running` or `Completed` status.
+> You should see Pods for Frontend, Gateway, Backend, Worker, RabbitMQ, Postgres, all in `Running` or `Completed` status.
 >
 > ⚠️ **Note**: If you see `CrashLoopBackOff`, it's usually a DB connection issue or a misconfigured Secret.
 
@@ -121,9 +124,10 @@ kubectl get svc -n taskflow
 
 **Expected Result:**
 > You should see the following Services:
+> - `taskflow-gateway`
 > - `taskflow-backend`
 > - `taskflow-frontend`
-> - `taskflow-redis-master`
+> - `taskflow-rabbitmq`
 > - `taskflow-postgresql`
 
 Validate by helm test
@@ -155,6 +159,14 @@ kubectl port-forward svc/taskflow-frontend -n taskflow 8080:80
 ```
 
 Open your browser and go to: [http://localhost:8080](http://localhost:8080)
+
+### 4. Local Compose Quick Start (Gateway + Worker + RabbitMQ)
+
+```bash
+docker compose up --build
+```
+
+Open the UI via [http://localhost:8080](http://localhost:8080). API requests now go through the gateway at `/api/*`, and task creation returns `202 Accepted` while the worker updates status asynchronously.
 
 You should able to see page like below:
 ![alt text](image.png)

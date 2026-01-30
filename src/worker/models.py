@@ -1,10 +1,10 @@
 from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from pydantic import BaseModel
 import os
 
 Base = declarative_base()
+
 
 class Task(Base):
     __tablename__ = 'tasks'
@@ -14,18 +14,16 @@ class Task(Base):
     description = Column(String(500))
     status = Column(String(32), nullable=False, default="PENDING")
 
-class TaskCreate(BaseModel):
-    title: str
-    description: str = ""
 
 DATABASE_URL = os.getenv(
-    'DATABASE_URL', 
+    'DATABASE_URL',
     "postgresql://taskflow:changeme@localhost:5432/taskflow"
 )
 
 engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 
 def get_db():
     db = SessionLocal()
