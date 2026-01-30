@@ -1,6 +1,6 @@
 import os
 import json
-import time
+import asyncio
 
 import aio_pika
 from sqlalchemy.orm import Session
@@ -30,7 +30,7 @@ async def process_message(message: aio_pika.IncomingMessage) -> None:
         if not task_id:
             return
         update_task_status(task_id, "RUNNING")
-        time.sleep(5)
+        await asyncio.sleep(5)
         update_task_status(task_id, "COMPLETED")
 
 
