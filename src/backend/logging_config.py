@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 from typing import Dict, Optional, Tuple
 
 try:
@@ -41,37 +42,31 @@ def _build_auth() -> _LokiAuth:
 
 
 def setup_logging() -> None:
-    """Attach a Loki handler to the root logger when LOKI_URL is present."""
-    loki_url = os.getenv("LOKI_URL")
-    if not loki_url:
-        return
-
-    if LokiHandler is None:
-        logging.getLogger(__name__).warning(
-            "python-logging-loki is not installed; skipping Loki setup"
-        )
-        return
-
+    """
+    配置基础日志系统。
+    仅输出到标准输出 (Console/stdout)，移除 Loki 直接推送逻辑。
+    """
+    # 1. 获取根记录器 (Root Logger)
     root_logger = logging.getLogger()
-    if any(isinstance(handler, LokiHandler) for handler in root_logger.handlers):
+
+    # 2. 如果已经有 Handler (比如 Uvicorn 已经配置过)，则不再重复添加
+    #    这样可以避免一条日志打印两次 (Duplicate Logs)
+    if root_logger.handlers:
         return
 
-    handler = LokiHandler(
-        url=loki_url.rstrip("/"),
-        version="1",
-        tags=_parse_labels(),
-        auth=_build_auth(),
-    )
+    # 3. 确定日志级别 (从环境变量读取，默认为 INFO)
+    log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_level = getattr(logging, log_level_name, logging.INFO)
+    root_logger.setLevel(log_level)
 
-    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-    handler.setLevel(getattr(logging, log_level, logging.INFO))
-    handler.setFormatter(
+    # 4. 配置控制台处理器 (StreamHandler)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(
         logging.Formatter(
             fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S%z",
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
     )
 
-    root_logger.setLevel(min(root_logger.level or logging.INFO, handler.level))
-    root_logger.addHandler(handler)
-
+    # 5. 挂载处理器
+    root_logger.addHandler(console_handler)
