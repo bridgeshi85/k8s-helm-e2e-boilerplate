@@ -1,11 +1,18 @@
 import os
 import json
 import time
+import asyncio
+import logging
 
 import aio_pika
 from sqlalchemy.orm import Session
 
 from models import get_db, Task
+from logging_config import setup_logging
+from context import set_request_id
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
@@ -26,6 +33,10 @@ def update_task_status(task_id: int, status: str) -> None:
 async def process_message(message: aio_pika.IncomingMessage) -> None:
     async with message.process():
         payload = json.loads(message.body.decode())
+        trace_id = message.headers.get("x-request-id")
+        set_request_id(trace_id)
+        logger.info("Worker received task", extra={"trace_id": trace_id})
+
         task_id = payload.get("task_id")
         if not task_id:
             return
@@ -45,6 +56,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    import asyncio
-
     asyncio.run(main())

@@ -1,14 +1,17 @@
-from fastapi import FastAPI, Depends, status
+from fastapi import FastAPI, Depends, status, Request
 from sqlalchemy.orm import Session
+
 import aio_pika
 import os
 import json
 import time
+import logging
+
 from models import get_db, Task, Base, engine, TaskCreate
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from logging_config import setup_logging
-import logging
+from context import set_request_id, get_request_id
 
 Base.metadata.create_all(bind=engine)
 setup_logging()
@@ -27,14 +30,17 @@ TASK_QUEUE_NAME = os.getenv("TASK_QUEUE_NAME", "task_queue")
 
 async def publish_task_created(task_id: int) -> None:
     logger.info("Publishing TaskCreated event for task_id=%s", task_id)
+
     try:
         connection = await aio_pika.connect_robust(RABBITMQ_URL)
+        current_req_id = get_request_id()  # 获取当前上下文的 ID
         async with connection:
             channel = await connection.channel()
             await channel.declare_queue(TASK_QUEUE_NAME, durable=True)
             message = aio_pika.Message(
                 body=json.dumps({"task_id": task_id}).encode(),
                 content_type="application/json",
+                headers={"x-request-id": current_req_id},
                 delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
                 type="TaskCreated",
             )
@@ -70,6 +76,19 @@ http_request_duration_seconds = Histogram(
 )
 
 
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    # 1. 尝试从 Header 获取 (如果是 Gateway 传来的)
+    req_id = request.headers.get("X-Request-ID")
+
+    # 2. 如果没有，生成新的，并存入 ContextVar
+    req_id = set_request_id(req_id)
+
+    response = await call_next(request)
+
+    # 3. 把 ID 返回给前端，方便调试
+    response.headers["X-Request-ID"] = req_id
+    return response
 
 
 @app.get("/")
@@ -80,6 +99,7 @@ def read_root():
 
 @app.get("/tasks")
 def get_tasks(db: Session = Depends(get_db)):
+    logger.info("Getting tasks")
     http_requests_total.labels(method="GET", endpoint="/tasks", status="200").inc()
     # calc the request latency
     start_time = time.time()
@@ -114,6 +134,7 @@ async def create_task(task: TaskCreate, db: Session = Depends(get_db)):
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
+    logger.info("Created Task in database %s", new_task)
 
     await publish_task_created(new_task.id)
 
@@ -129,6 +150,7 @@ async def create_task(task: TaskCreate, db: Session = Depends(get_db)):
             "status": new_task.status,
         }
     }
+
 
 # ========== Instrumental Setup ==========
 Instrumentator().instrument(app).expose(app)

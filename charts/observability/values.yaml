@@ -1,3 +1,59 @@
+loki:
+  deploymentMode: SingleBinary
+
+  loki:
+    auth_enabled: false
+    
+    commonConfig:
+      replication_factor: 1
+
+    # 这里才是真正的配置
+    storage:
+      type: 'filesystem'
+      
+    schemaConfig:
+      configs:
+        - from: 2026-01-01
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+
+  # 关闭 Memcached 缓存 (最占资源！)
+  chunksCache:
+    enabled: false
+  resultsCache:
+    enabled: false
+
+  lokiCanary:
+    enabled: false
+  
+  read:
+    replicas: 0
+  write:
+    replicas: 0
+  backend:
+    replicas: 0
+
+  # 限制 Loki 本体的资源
+  singleBinary:
+    replicas: 1
+    resources:
+      limits:
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+  
+  # 关闭自带的 Minio
+  minio:
+    enabled: false
+
+  test:
+    enabled: false
+
 kube-prometheus-stack:
   # 关闭 AlertManager
   alertmanager:
