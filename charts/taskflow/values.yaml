@@ -42,8 +42,8 @@ frontend:
 gateway:
   replicaCount: 1
   image:
-    repository: gto310/taskflow-gateway
-    tag: v1.0.0
+    repository: nginx
+    tag: 1.27-alpine
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
@@ -88,6 +88,10 @@ postgresql:
       enabled: false
 
 rabbitmq:
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/rabbitmq
+    tag: 4.0.2
   enabled: true
   fullnameOverride: "taskflow-rabbitmq"
   auth:
