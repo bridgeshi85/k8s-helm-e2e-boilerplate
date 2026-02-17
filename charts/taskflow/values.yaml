@@ -6,7 +6,7 @@ backend:
   image:
     repository: gto310/taskflow-backend
     tag: v1.0.0
-    pullPolicy: IfNotPresent 
+    pullPolicy: Always 
   service:
     type: ClusterIP
     port: 8000
@@ -27,7 +27,7 @@ frontend:
   image:
     repository: gto310/taskflow-frontend
     tag: v1.0.0
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   service:
     type: ClusterIP
     port: 80
@@ -44,7 +44,7 @@ gateway:
   image:
     repository: nginx
     tag: 1.27-alpine
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   service:
     type: ClusterIP
     port: 80

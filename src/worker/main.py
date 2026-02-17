@@ -43,6 +43,7 @@ async def process_message(message: aio_pika.IncomingMessage) -> None:
         update_task_status(task_id, "RUNNING")
         await asyncio.sleep(5)
         update_task_status(task_id, "COMPLETED")
+        logger.info("Worker completed task", extra={"trace_id": trace_id})
 
 
 async def main() -> None:

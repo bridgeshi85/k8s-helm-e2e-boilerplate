@@ -92,7 +92,23 @@ docker push <your_repo>/taskflow-frontend:v1.0.0
    helm upgrade --install observability ./charts/observability -n observability --create-namespace
    ```
 
-4. Deploy the application to your Kubernetes cluster.
+4. **Install NGINX Ingress Controller (cluster-level, once per cluster)**
+   ```bash
+   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+   helm repo update
+   kubectl create namespace ingress-nginx
+   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx
+   ```
+
+   Verify controller is ready:
+   ```bash
+   kubectl get pods -n ingress-nginx
+   kubectl get svc -n ingress-nginx
+   ```
+
+   > Ingress Controller is cluster infrastructure (north-south traffic entry), not part of the app chart and not part of the observability stack itself.
+
+5. Deploy the application to your Kubernetes cluster.
     ```bash
     # Install the chart
     helm upgrade taskflow ./charts/taskflow -n taskflow --create-namespace --install
@@ -133,16 +149,6 @@ kubectl get svc -n taskflow
 Validate by helm test
 ```
 helm test taskflow -n taskflow
-```
-you should able to see the message below 
-```
-NAMESPACE: taskflow
-STATUS: deployed
-REVISION: 6
-TEST SUITE:     taskflow-test-backend
-Last Started:   Sun Jan 25 17:27:10 2026
-Last Completed: Sun Jan 25 17:27:14 2026
-Phase:          Succeeded
 ```
 
 ---
