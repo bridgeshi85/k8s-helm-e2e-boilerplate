@@ -2,17 +2,15 @@ import os
 import json
 import time
 import asyncio
-import logging
 
 import aio_pika
 from sqlalchemy.orm import Session
 
 from models import get_db, Task
-from logging_config import setup_logging
+from logging_config import get_logger
 from context import set_request_id
 
-setup_logging()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")

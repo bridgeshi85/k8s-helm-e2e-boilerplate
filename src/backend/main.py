@@ -5,17 +5,17 @@ import aio_pika
 import os
 import json
 import time
-import logging
 
 from models import get_db, Task, Base, engine, TaskCreate
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
-from logging_config import setup_logging
+from logging_config import get_logger
 from context import set_request_id, get_request_id
 
+# 建立数据库表结构
 Base.metadata.create_all(bind=engine)
-setup_logging()
-logger = logging.getLogger(__name__)
+
+logger = get_logger(__name__)
 
 app = FastAPI(
     title="TaskFlow Backend",

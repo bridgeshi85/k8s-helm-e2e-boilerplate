@@ -33,3 +33,8 @@ def setup_logging() -> None:
     console_handler.addFilter(RequestIDFilter())
     root_logger.addHandler(console_handler)
 
+
+def get_logger(name: str | None = None) -> logging.Logger:
+    """Initialize logging once and return a named logger."""
+    setup_logging()
+    return logging.getLogger(name)
