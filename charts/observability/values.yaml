@@ -7,7 +7,6 @@ loki:
     commonConfig:
       replication_factor: 1
 
-    # 这里才是真正的配置
     storage:
       type: 'filesystem'
       
@@ -21,7 +20,7 @@ loki:
             prefix: index_
             period: 24h
 
-  # 关闭 Memcached 缓存 (最占资源！)
+  # 关闭 Memcached 缓存
   chunksCache:
     enabled: false
   resultsCache:
@@ -47,7 +46,6 @@ loki:
         cpu: 50m
         memory: 128Mi
   
-  # 关闭自带的 Minio
   minio:
     enabled: false
 
@@ -55,11 +53,9 @@ loki:
     enabled: false
 
 kube-prometheus-stack:
-  # 关闭 AlertManager
   alertmanager:
     enabled: false
 
-  # 关闭 NodeExporter
   nodeExporter:
     enabled: false
 
@@ -91,3 +87,12 @@ kube-prometheus-stack:
     enabled: false
   kubeProxy:
     enabled: false
+
+
+promtail:
+  enabled: true
+  
+  config:
+    clients:
+      - url: http://observability-loki-gateway.observability/loki/api/v1/push
+        tenant_id: 1
