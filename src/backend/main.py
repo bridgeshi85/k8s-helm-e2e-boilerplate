@@ -4,11 +4,10 @@ from sqlalchemy.orm import Session
 import aio_pika
 import os
 import json
-import time
 
 from models import get_db, Task, Base, engine, TaskCreate
 from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter
 from logging_config import get_logger
 from context import set_request_id, get_request_id
 
@@ -52,30 +51,6 @@ async def publish_task_created(task_id: int) -> None:
         raise
 
 
-# ========== Custom Prometheus Metrics (RED Method) ==========
-
-# Rate - Request counter
-http_requests_total = Counter(
-    'http_requests_total',
-    'Total HTTP requests',
-    ['method', 'endpoint', 'status']
-)
-
-# Errors - Error counter
-http_errors_total = Counter(
-    'http_errors_total',
-    'Total HTTP errors',
-    ['method', 'endpoint', 'status_code']
-)
-
-# Duration - Request latency histogram
-http_request_duration_seconds = Histogram(
-    'http_request_duration_seconds',
-    'HTTP request latency in seconds',
-    ['method', 'endpoint'],
-    buckets=[0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0]
-)
-
 rabbitmq_messages_published_total = Counter(
     'rabbitmq_messages_published_total',
     'Number of tasks successfully published to RabbitMQ',
@@ -84,32 +59,23 @@ rabbitmq_messages_published_total = Counter(
 
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
-    # 1. 尝试从 Header 获取 (如果是 Gateway 传来的)
     req_id = request.headers.get("X-Request-ID")
-
-    # 2. 如果没有，生成新的，并存入 ContextVar
     req_id = set_request_id(req_id)
 
     response = await call_next(request)
 
-    # 3. 把 ID 返回给前端，方便调试
     response.headers["X-Request-ID"] = req_id
     return response
 
 
 @app.get("/")
 def read_root():
-    http_requests_total.labels(method="GET", endpoint="/", status="200").inc()
     return {"message": "Welcome to TaskFlow API"}
 
 
 @app.get("/tasks")
 def get_tasks(db: Session = Depends(get_db)):
     logger.info("Getting tasks")
-    http_requests_total.labels(method="GET", endpoint="/tasks", status="200").inc()
-    # calc the request latency
-    start_time = time.time()
-
     tasks = db.query(Task).all()
     tasks_data = [
         {
@@ -120,33 +86,21 @@ def get_tasks(db: Session = Depends(get_db)):
         }
         for task in tasks
     ]
-
-    # calculate the request latency
-    latency = time.time() - start_time
-    http_request_duration_seconds.labels(method="GET", endpoint="/tasks").observe(latency)
-
     return {"tasks": tasks_data}
 
 
 @app.post("/tasks", status_code=status.HTTP_202_ACCEPTED)
 async def create_task(task: TaskCreate, db: Session = Depends(get_db)):
     logger.info("Creating Task %s", task.title)
-    http_requests_total.labels(method="POST", endpoint="/tasks", status="202").inc()
-
-    start_time = time.time()
 
     new_task = Task(title=task.title, description=task.description, status="PENDING")
-
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
     logger.info("Created Task in database %s", new_task)
 
+    # 触发异步消息发送
     await publish_task_created(new_task.id)
-
-    # calculate the request latency
-    latency = time.time() - start_time
-    http_request_duration_seconds.labels(method="POST", endpoint="/tasks").observe(latency)
 
     return {
         "task": {
@@ -158,10 +112,9 @@ async def create_task(task: TaskCreate, db: Session = Depends(get_db)):
     }
 
 
-# ========== Instrumental Setup ==========
+# 使用 prometheus_fastapi_instrumentator 自动为 FastAPI 应用添加 Prometheus 指标
 Instrumentator().instrument(app).expose(app)
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)
