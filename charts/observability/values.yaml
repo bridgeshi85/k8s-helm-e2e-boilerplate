@@ -1,0 +1,98 @@
+loki:
+  deploymentMode: SingleBinary
+
+  loki:
+    auth_enabled: false
+    
+    commonConfig:
+      replication_factor: 1
+
+    storage:
+      type: 'filesystem'
+      
+    schemaConfig:
+      configs:
+        - from: 2026-01-01
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+
+  # 关闭 Memcached 缓存
+  chunksCache:
+    enabled: false
+  resultsCache:
+    enabled: false
+
+  lokiCanary:
+    enabled: false
+  
+  read:
+    replicas: 0
+  write:
+    replicas: 0
+  backend:
+    replicas: 0
+
+  # 限制 Loki 本体的资源
+  singleBinary:
+    replicas: 1
+    resources:
+      limits:
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+  
+  minio:
+    enabled: false
+
+  test:
+    enabled: false
+
+kube-prometheus-stack:
+  alertmanager:
+    enabled: false
+
+  nodeExporter:
+    enabled: false
+
+  prometheus:
+    prometheusSpec:
+      # 允许 Prometheus 发现不带 Helm Release Label 的 ServiceMonitor
+      serviceMonitorSelectorNilUsesHelmValues: false
+      
+      # 允许匹配任意 Label 的 ServiceMonitor
+      serviceMonitorSelector: {}
+      
+      # 允许跨 Namespace 扫描
+      serviceMonitorNamespaceSelector: {}
+
+  grafana:
+    sidecar:
+      dashboards:
+        enabled: true
+        label: grafana_dashboard
+    adminUser: admin
+    adminPassword: strongpassword
+
+  # 关掉这些在 Kind 里抓不到或者不需要的组件
+  kubeEtcd:
+    enabled: false
+  kubeControllerManager:
+    enabled: false
+  kubeScheduler:
+    enabled: false
+  kubeProxy:
+    enabled: false
+
+
+promtail:
+  enabled: true
+  
+  config:
+    clients:
+      - url: http://observability-loki-gateway.observability/loki/api/v1/push
+        tenant_id: 1

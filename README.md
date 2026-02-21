@@ -6,8 +6,11 @@ A robust full-stack portfolio project demonstrating a modern DevOps workflow. Th
 
 The goal of this project is to showcase a complete production-like environment setup and automated testing pipeline.
 *   **Frontend**: React application served via Nginx.
+*   **Gateway**: Nginx API Gateway for routing and chaos testing.
 *   **Backend**: Python FastAPI service.
-*   **Databases**: PostgreSQL (persistent storage) and Redis (caching).
+*   **Worker**: Python worker service for async task processing.
+*   **Message Broker**: RabbitMQ for event-driven task dispatching.
+*   **Database**: PostgreSQL (persistent storage).
 *   **Infrastructure**: Kubernetes (K8s) managed via Helm Charts.
 *   **CI/CD**: GitHub Actions pipeline for building Docker images, linting, and running tests.
 
@@ -15,21 +18,27 @@ The goal of this project is to showcase a complete production-like environment s
 
 ```
 .
-├── .github/workflows   # CI/CD configurations (GitHub Actions)
-├── charts/             # Helm charts for Kubernetes deployment
-│   └── taskflow/       # Main application chart
+├── .github/workflows      # CI/CD configurations (GitHub Actions)
+├── charts/                # Helm charts for Kubernetes deployment
+│   ├── taskflow/          # Main application chart
+│   └── observability/     # Prometheus/Grafana/Loki and related stack
 ├── src/
-│   ├── backend/        # FastAPI application code
-│   └── frontend/       # React application code
-├── docker-compose.yml  # Local development orchestration
-└── README.md           # Project documentation
+│   ├── frontend/          # React application code
+│   ├── gateway/           # Nginx gateway configuration
+│   ├── backend/           # FastAPI application code
+│   └── worker/            # Async worker service code
+├── image.png              # UI screenshot in docs
+├── LICENSE                # MIT license
+└── README.md              # Project documentation
 ```
 
 ## 🛠️ Prerequisites
 
 *   Docker & Docker Compose
 *   Kubernetes Cluster (Minikube, Kind, or Cloud Provider)
+*   kubectl
 *   Helm 3+
+*   NGINX Ingress Controller (`ingress-nginx`), installed at cluster level
 *   Node.js & Python 3.10+ (for local development)
 
 ## 🐳 Building Docker Images
@@ -47,63 +56,65 @@ docker login
 
 Execute the following commands in the root directory of the project:
 
-A. Build and Push Backend
+A. Build and Push Images
 
 ```bash
-# 1. Build the image (note the dot . at the end)
+# 1. Build the image for each component
 docker build -t <your_repo>/taskflow-backend:v1.0.0 ./src/backend
+docker build -t <your_repo>/taskflow-frontend:v1.0.0 ./src/frontend
+docker build -t <your_repo>/taskflow-gateway:v1.0.0 ./src/gateway
+docker build -t <your_repo>/taskflow-worker:v1.0.0 ./src/worker
 
 # 2. Push the image
 docker push <your_repo>/taskflow-backend:v1.0.0
-```
-
-B. Build and Push Frontend
-
-```bash
-# 1. Build the image
-docker build -t <your_repo>/taskflow-frontend:v1.0.0 ./src/frontend
-
-# 2. Push the image
 docker push <your_repo>/taskflow-frontend:v1.0.0
+docker push <your_repo>/taskflow-gateway:v1.0.0
+docker push <your_repo>/taskflow-worker:v1.0.0
 ```
+
 
 ## 🏃‍♂️ Getting Started
 
 1. install the dependency
-    ```bash
-    # Enter the chart directory
-    cd charts/taskflow
+```bash
+# Enter the chart directory
+cd charts/taskflow
 
-    # Download dependencies (this will generate .tgz files in the charts/ directory)
-    helm dependency build
+# Download dependencies (this will generate .tgz files in the charts/ directory)
+helm dependency build
 
-    # Return to the root directory
-    cd ../..
-    ```
+# Return to the root directory
+cd ../..
+```
 
 2. **Configuration:**
-  Check `charts/taskflow/values.yaml` to configure image tags, resource limits, and database credentials.
-  
-3. Deploy the application to your Kubernetes cluster.
-    ```bash
-    # Install the chart
-    helm upgrade taskflow ./charts/taskflow -n taskflow --create-namespace --install --create-namespace
-    ```
+Check `charts/taskflow/values.yaml` to configure image tags, resource limits, and database credentials. Update the new images for Gateway and Worker if needed.
 
-4. Validate by helm test
-   ```
-   helm test taskflow -n taskflow
-   ```
-   you should able to see the message below 
-   ```
-    NAMESPACE: taskflow
-    STATUS: deployed
-    REVISION: 6
-    TEST SUITE:     taskflow-test-backend
-    Last Started:   Sun Jan 25 17:27:10 2026
-    Last Completed: Sun Jan 25 17:27:14 2026
-    Phase:          Succeeded
-    ```
+3. **Deploy the observability stack**
+```bash
+helm upgrade --install observability ./charts/observability -n observability --create-namespace
+```
+
+4. **Install NGINX Ingress Controller (cluster-level, once per cluster)**
+```bash
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+kubectl create namespace ingress-nginx
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx
+```
+Verify controller is ready:
+```bash
+kubectl get pods -n ingress-nginx
+kubectl get svc -n ingress-nginx
+```
+
+> Ingress Controller is cluster infrastructure (north-south traffic entry), not part of the app chart and not part of the observability stack itself.
+
+5. Deploy the application to your Kubernetes cluster.
+```bash
+# Install the chart
+helm upgrade taskflow ./charts/taskflow -n taskflow --create-namespace --install
+```
 
 ---
 
@@ -117,7 +128,7 @@ Run the following command:
 kubectl get pods -n taskflow
 ```
 
-> You should see 4 Pods (Frontend, Backend, Redis, Postgres), all in `Running` or `Completed` status.
+> You should see Pods for Frontend, Gateway, Backend, Worker, RabbitMQ, Postgres, all in `Running` or `Completed` status.
 >
 > ⚠️ **Note**: If you see `CrashLoopBackOff`, it's usually a DB connection issue or a misconfigured Secret.
 
@@ -131,10 +142,16 @@ kubectl get svc -n taskflow
 
 **Expected Result:**
 > You should see the following Services:
+> - `taskflow-gateway`
 > - `taskflow-backend`
 > - `taskflow-frontend`
-> - `taskflow-redis-master`
+> - `taskflow-rabbitmq`
 > - `taskflow-postgresql`
+
+Validate by helm test
+```
+helm test taskflow -n taskflow
+```
 
 ---
 
@@ -146,10 +163,18 @@ Open a new terminal window:
 
 ```bash
 # Format: kubectl port-forward svc/<service-name> <local-port>:<container-port>
-kubectl port-forward svc/taskflow-frontend -n taskflow
+kubectl port-forward svc/taskflow-frontend -n taskflow 8080:80
 ```
 
 Open your browser and go to: [http://localhost:8080](http://localhost:8080)
+
+### 4. Local Compose Quick Start (Gateway + Worker + RabbitMQ)
+
+```bash
+docker compose up --build
+```
+
+Open the UI via [http://localhost:8080](http://localhost:8080). API requests now go through the gateway at `/api/*`, and task creation returns `202 Accepted` while the worker updates status asynchronously.
 
 You should able to see page like below:
 ![alt text](image.png)

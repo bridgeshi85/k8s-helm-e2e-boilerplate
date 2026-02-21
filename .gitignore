@@ -5,3 +5,5 @@ src/frontend/package-lock.json
 .DS_Store
 .env
 charts/taskflow/charts/*.tgz
+charts/observability/charts/*.tgz
+.idea

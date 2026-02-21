@@ -29,8 +29,6 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           env:
-            - name: REDIS_HOST
-              value: {{ include "taskflow.redisHost" . | quote }}
             - name: DATABASE_URL
               value: {{ include "taskflow.databaseUrl" . | quote }}
             {{- range $key, $val := .Values.backend.env }}

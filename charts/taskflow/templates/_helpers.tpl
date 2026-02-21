@@ -72,10 +72,6 @@ SECTION 3: App Configuration Helpers
 Redis Hostname
 Return the fixed service name for Redis Master
 */}}
-{{- define "taskflow.redisHost" -}}
-{{ .Values.redis.fullnameOverride }}-master
-{{- end }}
-
 {{/*
 Database Connection URL (PostgreSQL)
 Constructs the full SQLAlchemy connection string using values from sub-chart
