@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, create_engine
+from sqlalchemy import Column, Integer, String, create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from pydantic import BaseModel
@@ -13,16 +13,20 @@ logger: Any = get_logger(__name__)
 
 Base = declarative_base()
 
+
 class Task(Base):
     __tablename__ = 'tasks'
 
     id = Column(Integer, primary_key=True)
     title = Column(String(100), nullable=False)
     description = Column(String(500))
+    status = Column(String(32), nullable=False, default="PENDING")
+
 
 class TaskCreate(BaseModel):
     title: str
     description: str = ""
+
 
 DATABASE_URL = os.getenv(
     'DATABASE_URL',

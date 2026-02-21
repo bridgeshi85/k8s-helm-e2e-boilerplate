@@ -1,18 +1,21 @@
-from fastapi import FastAPI, Depends, Body
+from fastapi import FastAPI, Depends, status, Request
 from sqlalchemy.orm import Session
-import redis
+
+import aio_pika
 import os
 import json
-from models import get_db, Task, Base, engine, TaskCreate 
+import time
 
 from models import get_db, Task, Base, engine, TaskCreate
 from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from logging_config import get_logger
 from context import set_request_id, get_request_id
 
 # 建立数据库表结构
 Base.metadata.create_all(bind=engine)
+
+logger = get_logger(__name__)
 
 app = FastAPI(
     title="TaskFlow Backend",
@@ -96,50 +99,69 @@ async def request_id_middleware(request: Request, call_next):
 
 @app.get("/")
 def read_root():
+    http_requests_total.labels(method="GET", endpoint="/", status="200").inc()
     return {"message": "Welcome to TaskFlow API"}
+
 
 @app.get("/tasks")
 def get_tasks(db: Session = Depends(get_db)):
-    # Try to get from cache
-    cached_tasks = redis_client.get("all_tasks")
-    if cached_tasks:
-        return {"tasks": json.loads(cached_tasks)}
+    logger.info("Getting tasks")
+    http_requests_total.labels(method="GET", endpoint="/tasks", status="200").inc()
+    # calc the request latency
+    start_time = time.time()
 
-    # If not in cache, get from DB
     tasks = db.query(Task).all()
-    tasks_data = [{"id": task.id, "title": task.title, "description": task.description} for task in tasks]
-    
-    # Store in cache for 60 seconds
-    redis_client.setex("all_tasks", 60, json.dumps(tasks_data))
-    
+    tasks_data = [
+        {
+            "id": task.id,
+            "title": task.title,
+            "description": task.description,
+            "status": task.status,
+        }
+        for task in tasks
+    ]
+
+    # calculate the request latency
+    latency = time.time() - start_time
+    http_request_duration_seconds.labels(method="GET", endpoint="/tasks").observe(latency)
+
     return {"tasks": tasks_data}
 
-@app.post("/tasks")
-def create_task(task: TaskCreate, db: Session = Depends(get_db)):
-    new_task = Task(title=task.title, description=task.description)
-    
+
+@app.post("/tasks", status_code=status.HTTP_202_ACCEPTED)
+async def create_task(task: TaskCreate, db: Session = Depends(get_db)):
+    logger.info("Creating Task %s", task.title)
+    http_requests_total.labels(method="POST", endpoint="/tasks", status="202").inc()
+
+    start_time = time.time()
+
+    new_task = Task(title=task.title, description=task.description, status="PENDING")
+
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
-    
-    # 清除缓存
-    try:
-        redis_client.delete("all_tasks")
-    except Exception:
-        pass
-    
-    return {"task": {"id": new_task.id, "title": new_task.title, "description": new_task.description}}
+    logger.info("Created Task in database %s", new_task)
 
-@app.get("/cache/{key}")
-def get_cache(key: str):
-    value = redis_client.get(key)
-    return {"key": key, "value": value}
+    await publish_task_created(new_task.id)
 
-@app.post("/cache")
-def set_cache(key: str, value: str):
-    redis_client.set(key, value)
-    return {"message": "Cached successfully"}
+    # calculate the request latency
+    latency = time.time() - start_time
+    http_request_duration_seconds.labels(method="POST", endpoint="/tasks").observe(latency)
+
+    return {
+        "task": {
+            "id": new_task.id,
+            "title": new_task.title,
+            "description": new_task.description,
+            "status": new_task.status,
+        }
+    }
+
+
+# ========== Instrumental Setup ==========
+Instrumentator().instrument(app).expose(app)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -6,4 +6,4 @@ src/frontend/package-lock.json
 .env
 charts/taskflow/charts/*.tgz
 charts/observability/charts/*.tgz
-.idea/
+.idea

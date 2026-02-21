@@ -6,7 +6,7 @@ backend:
   image:
     repository: gto310/taskflow-backend
     tag: v1.0.0
-    pullPolicy: IfNotPresent 
+    pullPolicy: Always 
   service:
     type: ClusterIP
     port: 8000
@@ -19,13 +19,15 @@ backend:
       memory: 128Mi
   env:
     LOG_LEVEL: "INFO"
+    RABBITMQ_URL: "amqp://taskflow-rabbitmq:5672/"
+    TASK_QUEUE_NAME: "task_queue"
 
 frontend:
   replicaCount: 1
   image:
     repository: gto310/taskflow-frontend
     tag: v1.0.0
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   service:
     type: ClusterIP
     port: 80
@@ -37,14 +39,40 @@ frontend:
       cpu: 50m
       memory: 64Mi
 
+gateway:
+  replicaCount: 1
+  image:
+    repository: nginx
+    tag: 1.27-alpine
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
 
-# Redis
-redis:
-  enabled: true
-  architecture: standalone
-  auth:
-    enabled: false
-  fullnameOverride: "taskflow-redis"
+worker:
+  replicaCount: 1
+  image:
+    repository: gto310/taskflow-worker
+    tag: v1.0.0
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  env:
+    RABBITMQ_URL: "amqp://taskflow-rabbitmq:5672/"
+    TASK_QUEUE_NAME: "task_queue"
+
 
 # PostgreSQL
 postgresql:
@@ -58,3 +86,14 @@ postgresql:
   primary:
     persistence:
       enabled: false
+
+rabbitmq:
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/rabbitmq
+    tag: 4.0.2
+  enabled: true
+  fullnameOverride: "taskflow-rabbitmq"
+  auth:
+    username: "guest"
+    password: "guest"
