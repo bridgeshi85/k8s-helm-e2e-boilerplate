@@ -2,7 +2,14 @@ from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from pydantic import BaseModel
+from tenacity import retry, stop_after_attempt, wait_fixed, before_log
+from logging_config import get_logger
+from prometheus_client import Gauge
 import os
+import logging
+from typing import Any
+
+logger: Any = get_logger(__name__)
 
 Base = declarative_base()
 
@@ -18,17 +25,57 @@ class TaskCreate(BaseModel):
     description: str = ""
 
 DATABASE_URL = os.getenv(
-    'DATABASE_URL', 
-    "postgresql://taskflow:changeme@localhost:5432/taskflow"
+    'DATABASE_URL',
+    "postgresql://taskflow:taskflowDatabase@localhost:5432/taskflow"
 )
 
-engine = create_engine(DATABASE_URL)
+# 每两秒重试一次，最多重试30次，直到数据库连接成功为止
+@retry(
+    stop=stop_after_attempt(30),
+    wait=wait_fixed(2),
+    before=before_log(logger, logging.INFO),
+    reraise=True
+)
+def create_engine_with_retry():
+    temp_engine = create_engine(DATABASE_URL)
+    # 尝试连接数据库，如果失败则重试
+    try:
+        with temp_engine.connect() as connection:
+            # 执行一个简单的查询验证
+            connection.execute(text("SELECT 1"))
+            logger.info("✅ Database connection established successfully!")
+    except Exception as e:
+        logger.warning(f"⚠️ Database not ready yet, retrying... Error: {e}")
+        raise e
+
+    return temp_engine
+
+
+engine = create_engine_with_retry()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Gauges help spot saturation in the SQLAlchemy connection pool.
+db_connection_pool_active = Gauge(
+    "db_connection_pool_active",
+    "Number of database sessions currently checked out",
+)
+db_connection_pool_waiting = Gauge(
+    "db_connection_pool_waiting",
+    "Number of callers currently waiting for a database session",
+)
+
+
 def get_db():
-    db = SessionLocal()
+    db_connection_pool_waiting.inc()
+    try:
+        db = SessionLocal()
+    finally:
+        db_connection_pool_waiting.dec()
+
+    db_connection_pool_active.inc()
     try:
         yield db
     finally:
         db.close()
+        db_connection_pool_active.dec()

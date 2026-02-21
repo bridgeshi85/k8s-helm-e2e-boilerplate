@@ -5,6 +5,13 @@ import os
 import json
 from models import get_db, Task, Base, engine, TaskCreate 
 
+from models import get_db, Task, Base, engine, TaskCreate
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Counter, Histogram
+from logging_config import get_logger
+from context import set_request_id, get_request_id
+
+# 建立数据库表结构
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -13,8 +20,78 @@ app = FastAPI(
     root_path="/api"
 )
 
-# Redis connection
-redis_client = redis.Redis(host=os.getenv('REDIS_HOST', 'localhost'), port=6379, decode_responses=True)
+# RabbitMQ settings
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+TASK_QUEUE_NAME = os.getenv("TASK_QUEUE_NAME", "task_queue")
+
+
+async def publish_task_created(task_id: int) -> None:
+    logger.info("Publishing TaskCreated event for task_id=%s", task_id)
+
+    try:
+        connection = await aio_pika.connect_robust(RABBITMQ_URL)
+        current_req_id = get_request_id()  # 获取当前上下文的 ID
+        async with connection:
+            channel = await connection.channel()
+            await channel.declare_queue(TASK_QUEUE_NAME, durable=True)
+            message = aio_pika.Message(
+                body=json.dumps({"task_id": task_id}).encode(),
+                content_type="application/json",
+                headers={"x-request-id": current_req_id},
+                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                type="TaskCreated",
+            )
+            await channel.default_exchange.publish(message, routing_key=TASK_QUEUE_NAME)
+            rabbitmq_messages_published_total.inc()
+            logger.info("TaskCreated event published successfully for task_id=%s", task_id)
+    except Exception as e:
+        logger.error("Failed to publish TaskCreated event for task_id=%s: %s", task_id, str(e))
+        raise
+
+
+# ========== Custom Prometheus Metrics (RED Method) ==========
+
+# Rate - Request counter
+http_requests_total = Counter(
+    'http_requests_total',
+    'Total HTTP requests',
+    ['method', 'endpoint', 'status']
+)
+
+# Errors - Error counter
+http_errors_total = Counter(
+    'http_errors_total',
+    'Total HTTP errors',
+    ['method', 'endpoint', 'status_code']
+)
+
+# Duration - Request latency histogram
+http_request_duration_seconds = Histogram(
+    'http_request_duration_seconds',
+    'HTTP request latency in seconds',
+    ['method', 'endpoint'],
+    buckets=[0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0]
+)
+
+rabbitmq_messages_published_total = Counter(
+    'rabbitmq_messages_published_total',
+    'Number of tasks successfully published to RabbitMQ',
+)
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    # 1. 尝试从 Header 获取 (如果是 Gateway 传来的)
+    req_id = request.headers.get("X-Request-ID")
+
+    # 2. 如果没有，生成新的，并存入 ContextVar
+    req_id = set_request_id(req_id)
+
+    response = await call_next(request)
+
+    # 3. 把 ID 返回给前端，方便调试
+    response.headers["X-Request-ID"] = req_id
+    return response
 
 
 @app.get("/")
