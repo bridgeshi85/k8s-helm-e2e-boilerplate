@@ -106,6 +106,12 @@ rabbitmq:
   auth:
     username: "guest"
     password: "guest"
+  metrics:
+    enabled: true
+    servicePort: 15692
+    serviceMonitor:
+      default: 
+        enabled: true
 
 ingress:
   className: "nginx"
