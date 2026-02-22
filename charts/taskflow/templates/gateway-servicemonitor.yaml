@@ -1,0 +1,20 @@
+{{- if .Values.gateway.metrics.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "taskflow.fullname" . }}-gateway
+  labels:
+    {{- include "taskflow.labels" . | nindent 4 }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "taskflow.name" . }}
+      app.kubernetes.io/component: gateway
+  endpoints:
+    - port: metrics
+      path: {{ .Values.gateway.metrics.path }}
+      interval: {{ .Values.gateway.metrics.interval }}
+{{- end }}
