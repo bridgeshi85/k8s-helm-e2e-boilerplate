@@ -12,6 +12,12 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    {{- if .Values.gateway.metrics.enabled }}
+    - port: {{ .Values.gateway.metrics.servicePort }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+    {{- end }}
   selector:
     {{- include "taskflow.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: gateway

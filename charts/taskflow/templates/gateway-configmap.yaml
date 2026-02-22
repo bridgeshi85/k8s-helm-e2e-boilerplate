@@ -10,6 +10,12 @@ data:
         listen 80;
         server_name localhost;
 
+        location /stub_status {
+            stub_status;
+            allow 127.0.0.1;
+            deny all;
+        }
+
         location /api/ {
             proxy_pass http://{{ include "taskflow.fullname" . }}-backend:{{ .Values.backend.service.port }}/;
             proxy_set_header Host $host;

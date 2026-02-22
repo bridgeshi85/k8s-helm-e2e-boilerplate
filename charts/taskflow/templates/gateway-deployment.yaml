@@ -21,6 +21,10 @@ spec:
         - name: gateway
           image: "{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
           ports:
             - containerPort: {{ .Values.gateway.service.port }}
               name: http
@@ -28,3 +32,17 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+        {{- if .Values.gateway.metrics.enabled }}
+        - name: nginx-prometheus-exporter
+          image: "{{ .Values.gateway.metrics.image.repository }}:{{ .Values.gateway.metrics.image.tag }}"
+          imagePullPolicy: {{ .Values.gateway.metrics.image.pullPolicy }}
+          args:
+            - -nginx.scrape-uri=http://127.0.0.1/stub_status
+          ports:
+            - containerPort: {{ .Values.gateway.metrics.servicePort }}
+              name: metrics
+        {{- end }}
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: {{ include "taskflow.fullname" . }}-gateway-conf
