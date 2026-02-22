@@ -96,6 +96,12 @@ postgresql:
     persistence:
       enabled: false
 
+  metrics:
+    enabled: true
+    servicePort: 9187
+    serviceMonitor:
+      enabled: true
+
 rabbitmq:
   image:
     registry: docker.io
@@ -112,6 +118,22 @@ rabbitmq:
     serviceMonitor:
       default: 
         enabled: true
+  # 自动创建 压测报警规则 (PrometheusRule)
+  prometheusRule:
+    enabled: true
+    additionalLabels:
+      release: kube-prometheus-stack 
+    rules:
+      - alert: TooManyConnections
+        expr: rabbitmq_connectionsTotal{service="{{ template "common.names.fullname" . }}"} > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Too many connections (instance {{ "{{ $labels.instance }}" }})
+          description: |
+              RabbitMQ instance has too many connections (> 1000)
+              VALUE = {{ "{{ $value }}" }}\n  LABELS: {{ "{{ $labels }}" }}
 
 ingress:
   className: "nginx"
