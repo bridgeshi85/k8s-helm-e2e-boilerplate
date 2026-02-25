@@ -5,4 +5,5 @@ psycopg2-binary==2.9.9
 aio-pika==9.4.3
 prometheus-fastapi-instrumentator==7.0.0
 prometheus-client==0.24.1
+tenacity==9.1.2
 python-logging-loki==0.3.1

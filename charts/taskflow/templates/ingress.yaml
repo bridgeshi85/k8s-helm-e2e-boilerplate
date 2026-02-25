@@ -13,9 +13,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "taskflow.fullname" . }}-backend
+                name: {{ include "taskflow.fullname" . }}-gateway
                 port:
-                  number: {{ .Values.backend.service.port }}
+                  number: {{ .Values.gateway.service.port }}
           - path: /
             pathType: Prefix
             backend:
