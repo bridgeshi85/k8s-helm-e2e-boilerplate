@@ -1,0 +1,14 @@
+apiVersion: v2
+name: e2e-runner
+description: A Helm chart for E2E test runner (Playwright + Pytest + Allure)
+type: application
+version: 0.1.0
+appVersion: "1.0"
+keywords:
+  - e2e
+  - testing
+  - playwright
+  - pytest
+  - allure
+maintainers:
+  - name: taskflow-team

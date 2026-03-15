@@ -1,0 +1,21 @@
+{{- if .Values.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "e2e-runner.pvcName" . }}
+  labels:
+    {{- include "e2e-runner.labels" . | nindent 4 }}
+  {{- if .Values.persistence.pvc.keep }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.pvc.accessMode }}
+  {{- if .Values.persistence.pvc.storageClassName }}
+  storageClassName: {{ .Values.persistence.pvc.storageClassName }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.pvc.size }}
+{{- end }}

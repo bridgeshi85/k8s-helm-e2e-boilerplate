@@ -21,7 +21,8 @@ The goal of this project is to showcase a complete production-like environment s
 ├── .github/workflows      # CI/CD configurations (GitHub Actions)
 ├── charts/                # Helm charts for Kubernetes deployment
 │   ├── taskflow/          # Main application chart
-│   └── observability/     # Prometheus/Grafana/Loki and related stack
+│   ├── observability/     # Prometheus/Grafana/Loki and related stack
+│   └── e2e-runner/        # E2E test runner (Playwright + Pytest + Allure)
 ├── src/
 │   ├── frontend/          # React application code
 │   ├── gateway/           # Nginx gateway configuration
@@ -179,6 +180,110 @@ Open the UI via [http://localhost:8080](http://localhost:8080). API requests now
 You should able to see page like below:
 ![alt text](image.png)
 
+---
+
+## 🧪 E2E Testing with e2e-runner (Step 1)
+
+The `e2e-runner` Helm chart provides an automated E2E testing solution using **Playwright + Pytest + Allure**.
+
+### Features
+
+- **Kubernetes Job/CronJob**: Run tests as one-time Job or scheduled CronJob
+- **Parallel Execution**: Configurable pytest-xdist workers
+- **Retry Mechanism**: Automatic retry on failure
+- **Artifact Storage**: PVC persistence for Allure results, screenshots, videos, and traces
+- **Helm Test Hook**: Integrate with `helm test` for CI/CD pipelines
+
+### Prerequisites
+
+1. Build the E2E test image from `playwright-pytest-allure-framework`:
+
+```bash
+# Clone the playwright-automation-test repository
+cd playwright-automation-test
+
+# Build the image
+docker build -t playwright-automation-test:latest .
+
+# Load into Kind/Minikube (if using local cluster)
+kind load docker-image playwright-automation-test:latest
+```
+
+### Quick Start
+
+1. **Deploy the E2E runner**:
+
+```bash
+helm upgrade --install e2e-runner ./charts/e2e-runner \
+  -n taskflow \
+  --set test.baseUrl="http://taskflow-gateway:80" \
+  --set job.image.repository=playwright-automation-test
+```
+
+2. **Check test execution**:
+
+```bash
+# Watch the Job
+kubectl get jobs -n taskflow -w
+
+# View logs
+kubectl logs -n taskflow -l app.kubernetes.io/name=e2e-runner --tail=100 -f
+```
+
+3. **Retrieve test artifacts**:
+
+```bash
+# Find the PVC
+kubectl get pvc -n taskflow
+
+# Copy artifacts to local
+kubectl cp taskflow/<pvc-pod-name>:/app/allure-results ./allure-results
+kubectl cp taskflow/<pvc-pod-name>:/app/screenshots ./screenshots
+```
+
+### Configuration Options
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `job.kind` | Job type: `Job` or `CronJob` | `Job` |
+| `job.cronSchedule` | Cron expression (for CronJob) | `0 2 * * *` |
+| `job.image.repository` | E2E test image | `playwright-automation-test` |
+| `test.baseUrl` | Target application URL | `http://taskflow-gateway:80` |
+| `test.pytest.workers` | Parallel workers | `4` |
+| `test.pytest.reruns` | Retry count | `1` |
+| `test.pytest.markers` | Pytest markers filter | `""` |
+| `persistence.enabled` | Enable PVC storage | `true` |
+| `persistence.pvc.size` | PVC size | `5Gi` |
+
+### Example: Run with Helm Test
+
+```bash
+# Enable helm test hook
+helm upgrade --install e2e-runner ./charts/e2e-runner \
+  -n taskflow \
+  --set helmTest.enabled=true
+
+# Run as helm test
+helm test taskflow -n taskflow
+```
+
+### Example: CronJob for Nightly Tests
+
+```bash
+helm upgrade --install e2e-runner ./charts/e2e-runner \
+  -n taskflow \
+  --set job.kind=CronJob \
+  --set job.cronSchedule="0 2 * * *" \
+  --set test.pytest.markers="regression"
+```
+
+### Next Steps (Step 2 - Allure Report Service)
+
+In Step 2, we will add:
+- Allure Report Deployment to serve test reports via web UI
+- Automatic report generation after test completion
+
+---
 
 ## 📜 License
 

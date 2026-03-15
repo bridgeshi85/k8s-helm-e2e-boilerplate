@@ -1,0 +1,151 @@
+# ================================================
+# E2E Runner Configuration
+# ================================================
+
+nameOverride: ""
+fullnameOverride: "e2e-runner"
+
+# ------------------------------------------------
+# E2E Test Job Configuration
+# ------------------------------------------------
+job:
+  # Job 执行策略：Job (一次性) 或 CronJob (定时执行)
+  kind: Job  # 可选: Job, CronJob
+  
+  # CronJob 配置 (仅当 kind: CronJob 时生效)
+  cronSchedule: "0 2 * * *"  # 每天凌晨 2 点执行
+  concurrencyPolicy: Forbid  # Forbid | Allow | Replace
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  
+  # 镜像配置
+  # 使用 playwright-pytest-allure-framework 的镜像
+  image:
+    repository: playwright-automation-test  # 本地构建的镜像
+    tag: latest
+    pullPolicy: IfNotPresent
+    # 如果使用远程镜像，可替换为:
+    # repository: your-registry/playwright-automation-test
+    # pullPolicy: Always
+  
+  # 资源限制
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  
+  # Job 超时时间 (秒)
+  activeDeadlineSeconds: 3600  # 1小时
+  
+  # 重试策略
+  backoffLimit: 1  # 失败后重试次数
+  
+  # 并行度配置
+  parallelism: 1
+  completions: 1
+  
+  # NodeSelector / Tolerations / Affinity
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ------------------------------------------------
+# Test Configuration
+# ------------------------------------------------
+test:
+  # 目标服务 URL (指向 taskflow-gateway 或 taskflow-frontend)
+  baseUrl: "http://taskflow-gateway:80"
+  
+  # Pytest 运行参数
+  pytest:
+    # 并发配置
+    workers: 4          # pytest-xdist 并发 worker 数
+    maxFailures: 0      # 最大失败次数 (0 表示不限制)
+    
+    # 重试配置
+    reruns: 1           # 失败重试次数
+    rerunsDelay: 5      # 重试间隔(秒)
+    
+    # Marker 筛选
+    markers: ""         # 例如: "smoke", "regression", "not slow"
+    
+    # 测试目录/文件
+    testPath: "tests"   # 测试代码路径
+    
+    # 额外参数
+    extraArgs: []
+    # 例如:
+    # - "-k"
+    # - "login or dashboard"
+    # - "--headed"
+    # - "--browser=chromium"
+
+# ------------------------------------------------
+# Artifacts Storage (PVC)
+# ------------------------------------------------
+persistence:
+  enabled: true
+  
+  # PVC 配置
+  pvc:
+    # 存储类名 (空值使用默认 StorageClass)
+    storageClassName: ""
+    
+    # 访问模式
+    accessMode: ReadWriteOnce
+    
+    # 存储大小
+    size: 5Gi
+    
+    # 是否保留 PVC (删除 release 时)
+    keep: true
+  
+  # Allure 结果目录 (在 PVC 中的路径)
+  allureResultsPath: "allure-results"
+  allureReportPath: "allure-report"
+  
+  # 截图/录像目录
+  screenshotsPath: "screenshots"
+  videosPath: "videos"
+  tracesPath: "traces"
+
+# ------------------------------------------------
+# Environment Variables
+# ------------------------------------------------
+env:
+  # Playwright 配置
+  PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright"
+  PYTHONUNBUFFERED: "1"
+  
+  # Allure 配置
+  ALLURE_RESULTS_DIR: "/app/allure-results"
+  ALLURE_REPORT_DIR: "/app/allure-report"
+  
+  # 测试输出配置
+  SCREENSHOTS_DIR: "/app/screenshots"
+  VIDEOS_DIR: "/app/videos"
+  TRACES_DIR: "/app/traces"
+
+# ------------------------------------------------
+# Secret Configuration (敏感信息)
+# ------------------------------------------------
+secrets:
+  enabled: false
+  # 例如: 测试账号密码、API Key 等
+  data: {}
+  #   TEST_USERNAME: "dGVzdF91c2Vy"  # base64 encoded
+  #   TEST_PASSWORD: "dGVzdF9wYXNz"
+
+# ------------------------------------------------
+# Helm Test Hook Configuration
+# ------------------------------------------------
+helmTest:
+  enabled: true
+  # 作为 Helm test hook 运行时的特殊配置
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation

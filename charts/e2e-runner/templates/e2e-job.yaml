@@ -1,0 +1,171 @@
+{{- $fullname := include "e2e-runner.fullname" . }}
+{{- $labels := include "e2e-runner.labels" . }}
+
+{{- if eq .Values.job.kind "CronJob" }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  schedule: {{ .Values.job.cronSchedule | quote }}
+  concurrencyPolicy: {{ .Values.job.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.job.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.job.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      {{- include "e2e-runner.jobSpec" . | nindent 6 }}
+{{- else }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $fullname }}-{{ now | unixEpoch }}
+  labels:
+    {{- $labels | nindent 4 }}
+  {{- if .Values.helmTest.enabled }}
+  annotations:
+    {{- range $key, $value := .Values.helmTest.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  {{- include "e2e-runner.jobSpec" . | nindent 2 }}
+{{- end }}
+
+{{/*
+Job Spec 模板 (供 Job 和 CronJob 复用)
+注意：define 块内需要重新计算变量，无法使用外部定义的 $fullname 等
+*/}}
+{{- define "e2e-runner.jobSpec" -}}
+ttlSecondsAfterFinished: 86400  # 24小时后自动清理
+backoffLimit: {{ .Values.job.backoffLimit }}
+parallelism: {{ .Values.job.parallelism }}
+completions: {{ .Values.job.completions }}
+{{- if .Values.job.activeDeadlineSeconds }}
+activeDeadlineSeconds: {{ .Values.job.activeDeadlineSeconds }}
+{{- end }}
+template:
+  metadata:
+    labels:
+      {{- include "e2e-runner.selectorLabels" . | nindent 6 }}
+  spec:
+    restartPolicy: Never
+    
+    {{- with .Values.job.nodeSelector }}
+    nodeSelector:
+      {{- toYaml . | nindent 8 }}
+    {{- end }}
+    
+    {{- with .Values.job.affinity }}
+    affinity:
+      {{- toYaml . | nindent 8 }}
+    {{- end }}
+    
+    {{- with .Values.job.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 8 }}
+    {{- end }}
+    
+    initContainers:
+      # 初始化容器：创建必要的目录结构
+      - name: init-dirs
+        image: busybox:1.36
+        command:
+          - /bin/sh
+          - -c
+          - |
+            mkdir -p /app/allure-results
+            mkdir -p /app/allure-report
+            mkdir -p /app/screenshots
+            mkdir -p /app/videos
+            mkdir -p /app/traces
+            echo "Directories initialized"
+        volumeMounts:
+          - name: artifacts
+            mountPath: /app
+    
+    containers:
+      - name: e2e-runner
+        image: "{{ .Values.job.image.repository }}:{{ .Values.job.image.tag }}"
+        imagePullPolicy: {{ .Values.job.image.pullPolicy }}
+        
+        command:
+          - /bin/bash
+          - /scripts/run-tests.sh
+        
+        env:
+          # 基础环境变量
+          - name: BASE_URL
+            valueFrom:
+              configMapKeyRef:
+                name: {{ include "e2e-runner.fullname" . }}-config
+                key: BASE_URL
+          
+          # 从 values 传入的环境变量
+          {{- range $key, $value := .Values.env }}
+          - name: {{ $key }}
+            value: {{ $value | quote }}
+          {{- end }}
+          
+          # 敏感信息 (Secret)
+          {{- if .Values.secrets.enabled }}
+          {{- range $key, $value := .Values.secrets.data }}
+          - name: {{ $key }}
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "e2e-runner.fullname" . }}-secrets
+                key: {{ $key }}
+          {{- end }}
+          {{- end }}
+        
+        resources:
+          {{- toYaml .Values.job.resources | nindent 10 }}
+        
+        volumeMounts:
+          # 挂载 PVC 存储测试结果
+          - name: artifacts
+            mountPath: /app/allure-results
+            subPath: {{ .Values.persistence.allureResultsPath }}
+          - name: artifacts
+            mountPath: /app/allure-report
+            subPath: {{ .Values.persistence.allureReportPath }}
+          - name: artifacts
+            mountPath: /app/screenshots
+            subPath: {{ .Values.persistence.screenshotsPath }}
+          - name: artifacts
+            mountPath: /app/videos
+            subPath: {{ .Values.persistence.videosPath }}
+          - name: artifacts
+            mountPath: /app/traces
+            subPath: {{ .Values.persistence.tracesPath }}
+          
+          # 挂载 ConfigMap 中的脚本和配置
+          - name: config
+            mountPath: /scripts/run-tests.sh
+            subPath: run-tests.sh
+          - name: config
+            mountPath: /app/pytest.ini
+            subPath: pytest.ini
+          - name: config
+            mountPath: /app/tests/conftest.py
+            subPath: conftest.py
+    
+    volumes:
+      # PVC 存储卷
+      - name: artifacts
+        {{- if .Values.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ include "e2e-runner.pvcName" . }}
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+      
+      # ConfigMap 配置卷
+      - name: config
+        configMap:
+          name: {{ include "e2e-runner.fullname" . }}-config
+          defaultMode: 0755
+{{- end }}
