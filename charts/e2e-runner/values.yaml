@@ -21,12 +21,9 @@ job:
   # 镜像配置
   # 使用 playwright-pytest-allure-framework 的镜像
   image:
-    repository: playwright-automation-test  # 本地构建的镜像
-    tag: latest
-    pullPolicy: IfNotPresent
-    # 如果使用远程镜像，可替换为:
-    # repository: your-registry/playwright-automation-test
-    # pullPolicy: Always
+    repository: gto310/playwright-test-agent
+    tag: "latest"  # 可选: latest, v1.0.0, etc.
+    pullPolicy: Always
   
   # 资源限制
   resources:
@@ -52,36 +49,17 @@ job:
   tolerations: []
   affinity: {}
 
+
 # ------------------------------------------------
-# Test Configuration
+# Runtime Env Config File
 # ------------------------------------------------
-test:
-  # 目标服务 URL (指向 taskflow-gateway 或 taskflow-frontend)
-  baseUrl: "http://taskflow-gateway:80"
-  
-  # Pytest 运行参数
-  pytest:
-    # 并发配置
-    workers: 4          # pytest-xdist 并发 worker 数
-    maxFailures: 0      # 最大失败次数 (0 表示不限制)
-    
-    # 重试配置
-    reruns: 1           # 失败重试次数
-    rerunsDelay: 5      # 重试间隔(秒)
-    
-    # Marker 筛选
-    markers: ""         # 例如: "smoke", "regression", "not slow"
-    
-    # 测试目录/文件
-    testPath: "tests"   # 测试代码路径
-    
-    # 额外参数
-    extraArgs: []
-    # 例如:
-    # - "-k"
-    # - "login or dashboard"
-    # - "--headed"
-    # - "--browser=chromium"
+envConfig:
+  # 生成文件名: env.<environment>.yaml
+  environment: "taskflow-k8s"
+  baseUrl: "http://taskflow-gateway.taskflow.svc.cluster.local:80"
+  browser: "chromium"
+  headless: true
+  slowmo: 0
 
 # ------------------------------------------------
 # Artifacts Storage (PVC)
@@ -103,14 +81,13 @@ persistence:
     # 是否保留 PVC (删除 release 时)
     keep: true
   
-  # Allure 结果目录 (在 PVC 中的路径)
-  allureResultsPath: "allure-results"
-  allureReportPath: "allure-report"
+  # 测试日志/报告目录 (在 PVC 中的路径)
+  allureResultsPath: "logs"
+  allureReportPath: "reports"
   
   # 截图/录像目录
   screenshotsPath: "screenshots"
   videosPath: "videos"
-  tracesPath: "traces"
 
 # ------------------------------------------------
 # Environment Variables
@@ -121,23 +98,12 @@ env:
   PYTHONUNBUFFERED: "1"
   
   # Allure 配置
-  ALLURE_RESULTS_DIR: "/app/allure-results"
-  ALLURE_REPORT_DIR: "/app/allure-report"
+  ALLURE_RESULTS_DIR: "/output/logs"
+  ALLURE_REPORT_DIR: "/output/reports"
   
   # 测试输出配置
-  SCREENSHOTS_DIR: "/app/screenshots"
-  VIDEOS_DIR: "/app/videos"
-  TRACES_DIR: "/app/traces"
-
-# ------------------------------------------------
-# Secret Configuration (敏感信息)
-# ------------------------------------------------
-secrets:
-  enabled: false
-  # 例如: 测试账号密码、API Key 等
-  data: {}
-  #   TEST_USERNAME: "dGVzdF91c2Vy"  # base64 encoded
-  #   TEST_PASSWORD: "dGVzdF9wYXNz"
+  SCREENSHOTS_DIR: "/output/screenshots"
+  VIDEOS_DIR: "/output/videos"
 
 # ------------------------------------------------
 # Helm Test Hook Configuration
@@ -149,3 +115,12 @@ helmTest:
     "helm.sh/hook": test
     "helm.sh/hook-weight": "5"
     "helm.sh/hook-delete-policy": before-hook-creation
+
+# ------------------------------------------------
+# Debug Configuration
+# ------------------------------------------------
+debug:
+  # 测试失败后保持容器存活，方便 kubectl exec 进入排障
+  keepAliveOnFailure: true
+  # 保活间隔秒数
+  keepAliveSleepSeconds: 3600

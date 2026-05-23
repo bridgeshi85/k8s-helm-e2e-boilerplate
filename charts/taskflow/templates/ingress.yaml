@@ -9,17 +9,10 @@ spec:
   rules:
     - http:
         paths:
-          - path: /api
+          - path: /
             pathType: Prefix
             backend:
               service:
                 name: {{ include "taskflow.fullname" . }}-gateway
                 port:
                   number: {{ .Values.gateway.service.port }}
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "taskflow.fullname" . }}-frontend
-                port:
-                  number: {{ .Values.frontend.service.port }}

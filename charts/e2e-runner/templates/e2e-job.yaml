@@ -77,15 +77,14 @@ template:
           - /bin/sh
           - -c
           - |
-            mkdir -p /app/allure-results
-            mkdir -p /app/allure-report
-            mkdir -p /app/screenshots
-            mkdir -p /app/videos
-            mkdir -p /app/traces
+            mkdir -p /output/logs
+            mkdir -p /output/reports
+            mkdir -p /output/screenshots
+            mkdir -p /output/videos
             echo "Directories initialized"
         volumeMounts:
           - name: artifacts
-            mountPath: /app
+            mountPath: /output
     
     containers:
       - name: e2e-runner
@@ -96,29 +95,11 @@ template:
           - /bin/bash
           - /scripts/run-tests.sh
         
-        env:
-          # 基础环境变量
-          - name: BASE_URL
-            valueFrom:
-              configMapKeyRef:
-                name: {{ include "e2e-runner.fullname" . }}-config
-                key: BASE_URL
-          
+        env:          
           # 从 values 传入的环境变量
           {{- range $key, $value := .Values.env }}
           - name: {{ $key }}
             value: {{ $value | quote }}
-          {{- end }}
-          
-          # 敏感信息 (Secret)
-          {{- if .Values.secrets.enabled }}
-          {{- range $key, $value := .Values.secrets.data }}
-          - name: {{ $key }}
-            valueFrom:
-              secretKeyRef:
-                name: {{ include "e2e-runner.fullname" . }}-secrets
-                key: {{ $key }}
-          {{- end }}
           {{- end }}
         
         resources:
@@ -127,31 +108,25 @@ template:
         volumeMounts:
           # 挂载 PVC 存储测试结果
           - name: artifacts
-            mountPath: /app/allure-results
+            mountPath: /output/logs
             subPath: {{ .Values.persistence.allureResultsPath }}
           - name: artifacts
-            mountPath: /app/allure-report
+            mountPath: /output/reports
             subPath: {{ .Values.persistence.allureReportPath }}
           - name: artifacts
-            mountPath: /app/screenshots
+            mountPath: /output/screenshots
             subPath: {{ .Values.persistence.screenshotsPath }}
           - name: artifacts
-            mountPath: /app/videos
+            mountPath: /output/videos
             subPath: {{ .Values.persistence.videosPath }}
-          - name: artifacts
-            mountPath: /app/traces
-            subPath: {{ .Values.persistence.tracesPath }}
           
           # 挂载 ConfigMap 中的脚本和配置
           - name: config
             mountPath: /scripts/run-tests.sh
             subPath: run-tests.sh
           - name: config
-            mountPath: /app/pytest.ini
-            subPath: pytest.ini
-          - name: config
-            mountPath: /app/tests/conftest.py
-            subPath: conftest.py
+            mountPath: /workspace/configs/env.{{ .Values.envConfig.environment }}.yaml
+            subPath: env.{{ .Values.envConfig.environment }}.yaml
     
     volumes:
       # PVC 存储卷

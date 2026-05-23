@@ -1,0 +1,46 @@
+{{- $fullname := include "e2e-runner.fullname" . }}
+{{- $labels := include "e2e-runner.labels" . }}
+{{- $test := default (dict) .Values.test }}
+{{- $pytest := default (dict) $test.pytest }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-config
+  labels:
+    {{- $labels | nindent 4 }}
+data:
+  env.{{ .Values.envConfig.environment }}.yaml: |
+    base_url: {{ .Values.envConfig.baseUrl | quote }}
+    browser: {{ .Values.envConfig.browser | quote }}
+    headless: {{ .Values.envConfig.headless }}
+    slowmo: {{ .Values.envConfig.slowmo }}
+
+  run-tests.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    echo "Starting E2E tests..."
+
+    # 构建极简的 pytest 命令
+    pytest_cmd=(
+      pytest
+      -v
+      "tests/test_task.py"
+      "--env={{ .Values.envConfig.environment }}"
+    )
+
+    echo "Running command: ${pytest_cmd[*]}"
+
+    # 关闭遇到错误自动退出的机制，以便捕获真实的测试退出状态码
+    set +e
+    "${pytest_cmd[@]}"
+    TEST_EXIT_CODE=$?
+    set -e
+
+    if [ "$TEST_EXIT_CODE" -ne 0 ]; then
+      echo "E2E tests failed with exit code ${TEST_EXIT_CODE}"
+    fi
+
+    exit "$TEST_EXIT_CODE"
