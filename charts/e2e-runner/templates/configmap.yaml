@@ -1,7 +1,5 @@
 {{- $fullname := include "e2e-runner.fullname" . }}
 {{- $labels := include "e2e-runner.labels" . }}
-{{- $test := default (dict) .Values.test }}
-{{- $pytest := default (dict) $test.pytest }}
 
 ---
 apiVersion: v1

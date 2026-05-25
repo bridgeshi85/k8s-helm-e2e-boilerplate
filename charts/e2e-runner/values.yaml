@@ -90,22 +90,6 @@ persistence:
   videosPath: "videos"
 
 # ------------------------------------------------
-# Environment Variables
-# ------------------------------------------------
-env:
-  # Playwright 配置
-  PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright"
-  PYTHONUNBUFFERED: "1"
-  
-  # Allure 配置
-  ALLURE_RESULTS_DIR: "/output/logs"
-  ALLURE_REPORT_DIR: "/output/reports"
-  
-  # 测试输出配置
-  SCREENSHOTS_DIR: "/output/screenshots"
-  VIDEOS_DIR: "/output/videos"
-
-# ------------------------------------------------
 # Helm Test Hook Configuration
 # ------------------------------------------------
 helmTest:
@@ -115,12 +99,3 @@ helmTest:
     "helm.sh/hook": test
     "helm.sh/hook-weight": "5"
     "helm.sh/hook-delete-policy": before-hook-creation
-
-# ------------------------------------------------
-# Debug Configuration
-# ------------------------------------------------
-debug:
-  # 测试失败后保持容器存活，方便 kubectl exec 进入排障
-  keepAliveOnFailure: true
-  # 保活间隔秒数
-  keepAliveSleepSeconds: 3600
