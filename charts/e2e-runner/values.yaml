@@ -1,0 +1,101 @@
+# ================================================
+# E2E Runner Configuration
+# ================================================
+
+nameOverride: ""
+fullnameOverride: "e2e-runner"
+
+# ------------------------------------------------
+# E2E Test Job Configuration
+# ------------------------------------------------
+job:
+  # Job 执行策略：Job (一次性) 或 CronJob (定时执行)
+  kind: Job  # 可选: Job, CronJob
+  
+  # CronJob 配置 (仅当 kind: CronJob 时生效)
+  cronSchedule: "0 2 * * *"  # 每天凌晨 2 点执行
+  concurrencyPolicy: Forbid  # Forbid | Allow | Replace
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  
+  # 镜像配置
+  # 使用 playwright-pytest-allure-framework 的镜像
+  image:
+    repository: gto310/playwright-test-agent
+    tag: "latest"  # 可选: latest, v1.0.0, etc.
+    pullPolicy: Always
+  
+  # 资源限制
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  
+  # Job 超时时间 (秒)
+  activeDeadlineSeconds: 3600  # 1小时
+  
+  # 重试策略
+  backoffLimit: 1  # 失败后重试次数
+  
+  # 并行度配置
+  parallelism: 1
+  completions: 1
+  
+  # NodeSelector / Tolerations / Affinity
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+
+# ------------------------------------------------
+# Runtime Env Config File
+# ------------------------------------------------
+envConfig:
+  # 生成文件名: env.<environment>.yaml
+  environment: "taskflow-k8s"
+  baseUrl: "http://taskflow-gateway.taskflow.svc.cluster.local:80"
+  browser: "chromium"
+  headless: true
+  slowmo: 0
+
+# ------------------------------------------------
+# Artifacts Storage (PVC)
+# ------------------------------------------------
+persistence:
+  enabled: true
+  
+  # PVC 配置
+  pvc:
+    # 存储类名 (空值使用默认 StorageClass)
+    storageClassName: ""
+    
+    # 访问模式
+    accessMode: ReadWriteOnce
+    
+    # 存储大小
+    size: 5Gi
+    
+    # 是否保留 PVC (删除 release 时)
+    keep: true
+  
+  # 测试日志/报告目录 (在 PVC 中的路径)
+  allureResultsPath: "logs"
+  allureReportPath: "reports"
+  
+  # 截图/录像目录
+  screenshotsPath: "screenshots"
+  videosPath: "videos"
+
+# ------------------------------------------------
+# Helm Test Hook Configuration
+# ------------------------------------------------
+helmTest:
+  enabled: true
+  # 作为 Helm test hook 运行时的特殊配置
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
