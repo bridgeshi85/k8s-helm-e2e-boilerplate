@@ -90,6 +90,52 @@ persistence:
   videosPath: "videos"
 
 # ------------------------------------------------
+# Allure Report Server Configuration
+# ------------------------------------------------
+allure:
+  # 是否部署常驻 Allure Server
+  enabled: true
+
+  image:
+    repository: frankescobar/allure-docker-service
+    tag: "latest"
+    pullPolicy: Always
+
+  # 每隔多少秒扫描一次 allure-results 目录
+  checkResultsEverySeconds: "10"
+
+  # 是否保留历史趋势
+  keepHistory: "1"
+
+  # 保留历史记录条数 (0 = 不限制)
+  keepHistoryLatest: "20"
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+  service:
+    # ClusterIP | NodePort | LoadBalancer
+    type: ClusterIP
+    port: 80
+    # 仅 NodePort 时生效；留空则由 k8s 随机分配
+    nodePort: ""
+
+  # 可选：Ingress 暴露 Allure UI
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: "allure.example.com"
+    path: /
+    pathType: Prefix
+    tls: []
+
+# ------------------------------------------------
 # Helm Test Hook Configuration
 # ------------------------------------------------
 helmTest:

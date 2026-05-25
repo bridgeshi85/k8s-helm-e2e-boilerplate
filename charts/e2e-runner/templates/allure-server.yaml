@@ -1,0 +1,134 @@
+{{- if .Values.allure.enabled }}
+{{- $fullname := include "e2e-runner.fullname" . }}
+{{- $labels   := include "e2e-runner.labels" . }}
+---
+# ============================================================
+# Allure Docker Service — 常驻报告服务
+# 挂载与 e2e-job 相同的 PVC，自动监控 allure-results 目录
+# 并实时生成/更新 HTML 报告。
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-allure-server
+  labels:
+    {{- $labels | nindent 4 }}
+    app.kubernetes.io/component: allure-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "e2e-runner.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: allure-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "e2e-runner.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: allure-server
+    spec:
+      containers:
+        - name: allure
+          image: "{{ .Values.allure.image.repository }}:{{ .Values.allure.image.tag }}"
+          imagePullPolicy: {{ .Values.allure.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 5050
+              protocol: TCP
+          env:
+            # 每隔 N 秒扫描 allure-results 目录并触发报告生成
+            - name: CHECK_RESULTS_EVERY_SECONDS
+              value: {{ .Values.allure.checkResultsEverySeconds | quote }}
+            # 保留历史趋势
+            - name: KEEP_HISTORY
+              value: {{ .Values.allure.keepHistory | quote }}
+            - name: KEEP_HISTORY_LATEST
+              value: {{ .Values.allure.keepHistoryLatest | quote }}
+          resources:
+            {{- toYaml .Values.allure.resources | nindent 12 }}
+          volumeMounts:
+            # 挂载与 e2e-job 相同的 PVC subPath，对齐 allure-results 目录
+            - name: artifacts
+              mountPath: /app/allure-results
+              subPath: {{ .Values.persistence.allureResultsPath }}
+            # 将生成的 HTML 报告持久化到 PVC 的 allureReportPath 子目录
+            - name: artifacts
+              mountPath: /app/default-reports
+              subPath: {{ .Values.persistence.allureReportPath }}
+          livenessProbe:
+            httpGet:
+              path: /allure-docker-service/version
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /allure-docker-service/version
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: artifacts
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "e2e-runner.pvcName" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-allure-service
+  labels:
+    {{- $labels | nindent 4 }}
+    app.kubernetes.io/component: allure-server
+spec:
+  type: {{ .Values.allure.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.allure.service.port }}
+      targetPort: http
+      protocol: TCP
+      {{- if and (eq .Values.allure.service.type "NodePort") .Values.allure.service.nodePort }}
+      nodePort: {{ .Values.allure.service.nodePort }}
+      {{- end }}
+  selector:
+    app.kubernetes.io/name: {{ include "e2e-runner.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: allure-server
+{{- if .Values.allure.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}-allure-ingress
+  labels:
+    {{- $labels | nindent 4 }}
+    app.kubernetes.io/component: allure-server
+  {{- with .Values.allure.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.allure.ingress.className }}
+  ingressClassName: {{ .Values.allure.ingress.className }}
+  {{- end }}
+  {{- if .Values.allure.ingress.tls }}
+  tls:
+    {{- toYaml .Values.allure.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.allure.ingress.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.allure.ingress.path }}
+            pathType: {{ .Values.allure.ingress.pathType }}
+            backend:
+              service:
+                name: {{ $fullname }}-allure-service
+                port:
+                  name: http
+{{- end }}
+{{- end }}

@@ -27,6 +27,7 @@ data:
       -v
       "tests/test_task.py"
       "--env={{ .Values.envConfig.environment }}"
+      "--alluredir=/output/results"
     )
 
     echo "Running command: ${pytest_cmd[*]}"
