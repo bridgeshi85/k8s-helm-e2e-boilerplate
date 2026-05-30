@@ -51,11 +51,7 @@ spec:
             # 挂载与 e2e-job 相同的 PVC subPath，对齐 allure-results 目录
             - name: artifacts
               mountPath: /app/allure-results
-              subPath: {{ .Values.persistence.allureResultsPath }}
-            # 将生成的 HTML 报告持久化到 PVC 的 allureReportPath 子目录
-            - name: artifacts
-              mountPath: /app/default-reports
-              subPath: {{ .Values.persistence.allureReportPath }}
+              subPath: {{ .Values.persistence.outPutPath }}/allure-results
           livenessProbe:
             httpGet:
               path: /allure-docker-service/version
@@ -87,7 +83,7 @@ metadata:
 spec:
   type: {{ .Values.allure.service.type }}
   ports:
-    - name: http
+    - name: allure-ui
       port: {{ .Values.allure.service.port }}
       targetPort: http
       protocol: TCP
@@ -98,37 +94,4 @@ spec:
     app.kubernetes.io/name: {{ include "e2e-runner.name" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/component: allure-server
-{{- if .Values.allure.ingress.enabled }}
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: {{ $fullname }}-allure-ingress
-  labels:
-    {{- $labels | nindent 4 }}
-    app.kubernetes.io/component: allure-server
-  {{- with .Values.allure.ingress.annotations }}
-  annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-spec:
-  {{- if .Values.allure.ingress.className }}
-  ingressClassName: {{ .Values.allure.ingress.className }}
-  {{- end }}
-  {{- if .Values.allure.ingress.tls }}
-  tls:
-    {{- toYaml .Values.allure.ingress.tls | nindent 4 }}
-  {{- end }}
-  rules:
-    - host: {{ .Values.allure.ingress.host | quote }}
-      http:
-        paths:
-          - path: {{ .Values.allure.ingress.path }}
-            pathType: {{ .Values.allure.ingress.pathType }}
-            backend:
-              service:
-                name: {{ $fullname }}-allure-service
-                port:
-                  name: http
-{{- end }}
 {{- end }}

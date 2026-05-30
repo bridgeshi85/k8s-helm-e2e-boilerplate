@@ -1,5 +1,6 @@
 {{- $fullname := include "e2e-runner.fullname" . }}
 {{- $labels := include "e2e-runner.labels" . }}
+{{- $workdir := .Values.job.workdir }}
 
 ---
 apiVersion: v1
@@ -15,19 +16,36 @@ data:
     headless: {{ .Values.envConfig.headless }}
     slowmo: {{ .Values.envConfig.slowmo }}
 
+  pytest.ini: |
+    [pytest]
+    addopts =
+        -s
+        -q
+        --env={{ .Values.envConfig.environment }}
+        --alluredir={{ .Values.persistence.outPutPath }}/allure-results
+        --video=retain-on-failure
+    log_cli = true
+    log_cli_level = INFO
+    log_cli_format = %(asctime)s [%(levelname)s] %(message)s
+    log_cli_date_format = %H:%M:%S
+
+    log_file = {{ .Values.persistence.outPutPath }}/logs/test.log
+    log_file_format = %(asctime)s [%(levelname)s] %(message)s
+    log_file_date_format = %Y-%m-%d %H:%M:%S
+
   run-tests.sh: |
     #!/bin/bash
     set -euo pipefail
 
     echo "Starting E2E tests..."
+    echo "Working directory: $(pwd)"
 
-    # 构建极简的 pytest 命令
+    # pytest.ini 中已配置 --alluredir / --env / --video 等选项
     pytest_cmd=(
       pytest
       -v
       "tests/test_task.py"
-      "--env={{ .Values.envConfig.environment }}"
-      "--alluredir=/output/results"
+      --env={{ .Values.envConfig.environment }}
     )
 
     echo "Running command: ${pytest_cmd[*]}"
@@ -42,4 +60,13 @@ data:
       echo "E2E tests failed with exit code ${TEST_EXIT_CODE}"
     fi
 
+    if [ "{{ .Values.debug.enabled | default false }}" = "true" ]; then
+      echo "Debug mode enabled. Container will stay alive for troubleshooting."
+      echo "Last test exit code: ${TEST_EXIT_CODE}"
+      while true; do
+        sleep {{ .Values.debug.sleepSeconds | default 3600 }}
+      done
+    fi
+
     exit "$TEST_EXIT_CODE"
+

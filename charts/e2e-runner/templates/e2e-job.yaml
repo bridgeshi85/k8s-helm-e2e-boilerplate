@@ -70,26 +70,28 @@ template:
     {{- end }}
     
     initContainers:
-      # 初始化容器：创建必要的目录结构
+      # 初始化容器：在 workdir 下创建必要的输出目录结构
       - name: init-dirs
         image: busybox:1.36
         command:
           - /bin/sh
           - -c
           - |
-            mkdir -p /output/logs
-            mkdir -p /output/reports
-            mkdir -p /output/screenshots
-            mkdir -p /output/videos
+            mkdir -p {{ .Values.job.workdir }}/{{ .Values.persistence.allureResultsMountPath }}
+            mkdir -p {{ .Values.job.workdir }}/{{ .Values.persistence.logsMountPath }}
+            mkdir -p {{ .Values.job.workdir }}/{{ .Values.persistence.screenshotsMountPath }}
+            mkdir -p {{ .Values.job.workdir }}/{{ .Values.persistence.videosMountPath }}
             echo "Directories initialized"
         volumeMounts:
           - name: artifacts
-            mountPath: /output
+            mountPath: {{ .Values.job.workdir }}/{{ .Values.persistence.outPutPath }}
+            subPath: {{ .Values.persistence.outPutPath }}
     
     containers:
       - name: e2e-runner
         image: "{{ .Values.job.image.repository }}:{{ .Values.job.image.tag }}"
         imagePullPolicy: {{ .Values.job.image.pullPolicy }}
+        workingDir: {{ .Values.job.workdir }}
         
         command:
           - /bin/bash
@@ -106,26 +108,20 @@ template:
           {{- toYaml .Values.job.resources | nindent 10 }}
         
         volumeMounts:
-          # 挂载 PVC 存储测试结果
+          # 挂载 PVC：subPath → workdir 内的输出目录，与 pytest.ini 路径对齐
           - name: artifacts
-            mountPath: /output/logs
-            subPath: {{ .Values.persistence.allureResultsPath }}
-          - name: artifacts
-            mountPath: /output/reports
-            subPath: {{ .Values.persistence.allureReportPath }}
-          - name: artifacts
-            mountPath: /output/screenshots
-            subPath: {{ .Values.persistence.screenshotsPath }}
-          - name: artifacts
-            mountPath: /output/videos
-            subPath: {{ .Values.persistence.videosPath }}
+            mountPath: {{ .Values.job.workdir }}/{{ .Values.persistence.outPutPath }}
+            subPath: {{ .Values.persistence.outPutPath }}
           
-          # 挂载 ConfigMap 中的脚本和配置
+          # 挂载 ConfigMap 中的脚本、pytest.ini 和环境配置
           - name: config
             mountPath: /scripts/run-tests.sh
             subPath: run-tests.sh
           - name: config
-            mountPath: /workspace/configs/env.{{ .Values.envConfig.environment }}.yaml
+            mountPath: {{ .Values.job.workdir }}/pytest.ini
+            subPath: pytest.ini
+          - name: config
+            mountPath: {{ .Values.job.workdir }}/configs/env.{{ .Values.envConfig.environment }}.yaml
             subPath: env.{{ .Values.envConfig.environment }}.yaml
     
     volumes:
