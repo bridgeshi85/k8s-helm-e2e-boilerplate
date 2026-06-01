@@ -19,7 +19,6 @@ backend:
       memory: 128Mi
   env:
     LOG_LEVEL: "INFO"
-    RABBITMQ_URL: "amqp://taskflow-rabbitmq:5672/"
     TASK_QUEUE_NAME: "task_queue"
 
 frontend:
@@ -79,7 +78,6 @@ worker:
       cpu: 50m
       memory: 64Mi
   env:
-    RABBITMQ_URL: "amqp://taskflow-rabbitmq:5672/"
     TASK_QUEUE_NAME: "task_queue"
 
 
