@@ -77,10 +77,7 @@ template:
           - /bin/sh
           - -c
           - |
-            mkdir -p {{ .Values.job.workdir }}/{{ .Values.persistence.allureResultsMountPath }}
-            mkdir -p {{ .Values.job.workdir }}/{{ .Values.persistence.logsMountPath }}
-            mkdir -p {{ .Values.job.workdir }}/{{ .Values.persistence.screenshotsMountPath }}
-            mkdir -p {{ .Values.job.workdir }}/{{ .Values.persistence.videosMountPath }}
+            mkdir -p {{ .Values.job.workdir }}/{{ .Values.persistence.outPutPath }}
             echo "Directories initialized"
         volumeMounts:
           - name: artifacts
