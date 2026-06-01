@@ -264,7 +264,7 @@ helm upgrade --install e2e-runner ./charts/e2e-runner \
   --set helmTest.enabled=true
 
 # Run as helm test
-helm test taskflow -n taskflow
+helm test e2e-runner -n e2e-runner --logs
 ```
 
 ### Example: CronJob for Nightly Tests

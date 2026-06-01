@@ -19,10 +19,9 @@ job:
   failedJobsHistoryLimit: 1
   
   # 镜像配置
-  # 使用 playwright-pytest-allure-framework 的镜像
   image:
     repository: gto310/playwright-test-agent
-    tag: "latest"  # 可选: latest, v1.0.0, etc.
+    tag: "latest"
     pullPolicy: Always
   
   # 资源限制
@@ -34,6 +33,9 @@ job:
       cpu: 500m
       memory: 1Gi
   
+  # 容器工作目录 (pytest 命令在此目录下执行，相对路径以此为基准)
+  workdir: /workspace
+
   # Job 超时时间 (秒)
   activeDeadlineSeconds: 3600  # 1小时
   
@@ -80,14 +82,46 @@ persistence:
     
     # 是否保留 PVC (删除 release 时)
     keep: true
-  
-  # 测试日志/报告目录 (在 PVC 中的路径)
-  allureResultsPath: "logs"
-  allureReportPath: "reports"
-  
-  # 截图/录像目录
-  screenshotsPath: "screenshots"
-  videosPath: "videos"
+
+  # PVC 内的目录结构配置
+  outPutPath: "output"
+
+
+# ------------------------------------------------
+# Allure Report Server Configuration
+# ------------------------------------------------
+allure:
+  # 是否部署常驻 Allure Server
+  enabled: true
+
+  image:
+    repository: frankescobar/allure-docker-service
+    tag: "latest"
+    pullPolicy: Always
+
+  # 每隔多少秒扫描一次 allure-results 目录
+  checkResultsEverySeconds: "10"
+
+  # 是否保留历史趋势
+  keepHistory: "1"
+
+  # 保留历史记录条数 (0 = 不限制)
+  keepHistoryLatest: "20"
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+  service:
+    # ClusterIP | NodePort | LoadBalancer
+    type: ClusterIP
+    port: 5050
+    nodePort: ""
+
 
 # ------------------------------------------------
 # Helm Test Hook Configuration
@@ -99,3 +133,12 @@ helmTest:
     "helm.sh/hook": test
     "helm.sh/hook-weight": "5"
     "helm.sh/hook-delete-policy": before-hook-creation
+
+# ------------------------------------------------
+# Debug Mode
+# ------------------------------------------------
+debug:
+  # 开启后：测试执行完成后容器不退出，便于 kubectl exec 排查
+  enabled: false
+  # Debug 模式下循环 sleep 间隔（秒）
+  sleepSeconds: 36000
