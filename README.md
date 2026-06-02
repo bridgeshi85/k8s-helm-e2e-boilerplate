@@ -8,43 +8,7 @@ A full-stack boilerplate demonstrating a production-like Kubernetes workflow: mu
 
 ## Architecture Overview
 
-```
-                          ┌──────────────────────────────────────────────┐
-                          │               Kubernetes Cluster              │
-                          │                                               │
-  Browser / k6  ──────►  │  Ingress (nginx)                              │
-                          │       │                                       │
-                          │       ▼                                       │
-                          │  ┌─────────┐                                  │
-                          │  │ Gateway │  (Nginx reverse proxy)           │
-                          │  └────┬────┘                                  │
-                          │       │ /api/*                  /             │
-                          │       ▼                          ▼            │
-                          │  ┌─────────┐            ┌──────────────┐     │
-                          │  │ Backend │            │   Frontend   │     │
-                          │  │(FastAPI)│            │(React+Nginx) │     │
-                          │  └────┬────┘            └──────────────┘     │
-                          │       │  publish                              │
-                          │       ▼                                       │
-                          │  ┌──────────┐   consume  ┌────────────┐      │
-                          │  │ RabbitMQ │ ──────────► │   Worker   │     │
-                          │  └──────────┘            │  (Python)  │     │
-                          │                           └─────┬──────┘     │
-                          │                                 │             │
-                          │                         read/write            │
-                          │                                 ▼             │
-                          │                        ┌─────────────┐       │
-                          │                        │  PostgreSQL │       │
-                          │                        └─────────────┘       │
-                          │                                               │
-                          │  ┌──────────────────────────────────────┐    │
-                          │  │          Observability Stack          │    │
-                          │  │  Prometheus ◄── ServiceMonitors       │    │
-                          │  │  Grafana    ◄── Prometheus / Loki     │    │
-                          │  │  Loki + Promtail ◄── Pod logs        │    │
-                          │  └──────────────────────────────────────┘    │
-                          └──────────────────────────────────────────────┘
-```
+![Architecture Diagram](architecture-diagram.png)
 
 ### Request Flow
 
@@ -165,11 +129,31 @@ helm dependency build
 cd ../..
 
 cd charts/observability
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
 helm dependency build
 cd ../..
 ```
 
-### Step 4 — Deploy the application
+### Step 4 — Deploy the observability stack
+
+```bash
+helm upgrade --install observability ./charts/observability \
+  -n observability --create-namespace
+```
+
+This installs:
+- **Prometheus** — scrapes metrics from Backend, Gateway, RabbitMQ, and PostgreSQL via `ServiceMonitors`
+- **Grafana** — dashboards (default credentials: `admin` / `prom-operator`)
+- **Loki + Promtail** — log aggregation from all pods
+
+Grafana default credentials when installing via the bundled `observability` chart:
+
+- Username: `admin`
+- Password: `strongpassword`
+
+### Step 5 — Deploy the application
 
 ```bash
 helm upgrade --install taskflow ./charts/taskflow \
@@ -198,18 +182,6 @@ taskflow-rabbitmq-0                   1/1     Running
 > ```bash
 > kubectl logs -n taskflow -l app.kubernetes.io/component=worker --tail=50
 > ```
-
-### Step 5 — Deploy the observability stack
-
-```bash
-helm upgrade --install observability ./charts/observability \
-  -n observability --create-namespace
-```
-
-This installs:
-- **Prometheus** — scrapes metrics from Backend, Gateway, RabbitMQ, and PostgreSQL via `ServiceMonitors`
-- **Grafana** — dashboards (default credentials: `admin` / `prom-operator`)
-- **Loki + Promtail** — log aggregation from all pods
 
 ### Step 6 — Access the application
 
