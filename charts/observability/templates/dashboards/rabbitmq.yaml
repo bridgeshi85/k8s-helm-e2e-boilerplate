@@ -1,0 +1,206 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-rabbitmq
+  namespace: {{ .Release.Namespace }}
+  labels:
+    grafana_dashboard: "1"
+data:
+  rabbitmq.json: |
+    {
+      "title": "TaskFlow — RabbitMQ",
+      "uid": "taskflow-rabbitmq",
+      "tags": ["taskflow", "rabbitmq"],
+      "timezone": "browser",
+      "refresh": "10s",
+      "schemaVersion": 38,
+      "time": { "from": "now-1h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Queue Depth (messages ready)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "rabbitmq_queue_messages_ready{namespace=\"taskflow\"}",
+              "legendFormat": "{{queue}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": { "lineWidth": 2, "fillOpacity": 10 },
+              "color": { "mode": "palette-classic" }
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "Unacknowledged Messages",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "rabbitmq_queue_messages_unacked{namespace=\"taskflow\"}",
+              "legendFormat": "{{queue}} unacked"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": { "lineWidth": 2, "fillOpacity": 8 },
+              "color": { "fixedColor": "orange", "mode": "fixed" }
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "Publish Rate (msg/s)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "sum(rate(rabbitmq_channel_messages_published_total{namespace=\"taskflow\"}[1m])) by (queue)",
+              "legendFormat": "published {{queue}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "mps",
+              "custom": { "lineWidth": 2, "fillOpacity": 8 }
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "Consume Rate (msg/s)",
+          "type": "timeseries",
+          "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "sum(rate(rabbitmq_channel_messages_delivered_ack_total{namespace=\"taskflow\"}[1m])) by (queue)",
+              "legendFormat": "consumed {{queue}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "mps",
+              "custom": { "lineWidth": 2, "fillOpacity": 8 }
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "Active Connections",
+          "type": "stat",
+          "gridPos": { "x": 16, "y": 8, "w": 4, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "sum(rabbitmq_connections{namespace=\"taskflow\"})",
+              "legendFormat": "connections"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "short" }
+          }
+        },
+        {
+          "id": 6,
+          "title": "Active Consumers",
+          "type": "stat",
+          "gridPos": { "x": 20, "y": 8, "w": 4, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "sum(rabbitmq_queue_consumers{namespace=\"taskflow\"})",
+              "legendFormat": "consumers"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "short" }
+          }
+        },
+        {
+          "id": 7,
+          "title": "Total Messages in All Queues",
+          "type": "stat",
+          "gridPos": { "x": 16, "y": 12, "w": 4, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "sum(rabbitmq_queue_messages{namespace=\"taskflow\"})",
+              "legendFormat": "total"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 100 },
+                  { "color": "red", "value": 1000 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 8,
+          "title": "Memory Used",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 16, "w": 12, "h": 7 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "rabbitmq_process_resident_memory_bytes{namespace=\"taskflow\"}",
+              "legendFormat": "RSS memory"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": { "lineWidth": 2, "fillOpacity": 8 }
+            }
+          }
+        },
+        {
+          "id": 9,
+          "title": "Redelivered Messages",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 16, "w": 12, "h": 7 },
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "targets": [
+            {
+              "expr": "sum(rate(rabbitmq_channel_messages_redelivered_total{namespace=\"taskflow\"}[1m]))",
+              "legendFormat": "redelivered/s"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "mps",
+              "custom": { "lineWidth": 2, "fillOpacity": 6 },
+              "color": { "fixedColor": "red", "mode": "fixed" }
+            }
+          }
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "pluginId": "prometheus",
+            "label": "Datasource"
+          }
+        ]
+      }
+    }
