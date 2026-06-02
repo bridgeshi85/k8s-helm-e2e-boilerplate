@@ -53,6 +53,7 @@ INGRESS_SVC="${INGRESS_SVC:-$(pick_service "$INGRESS_NS" ingress-nginx-controlle
 GRAFANA_SVC="${GRAFANA_SVC:-$(pick_service "$OBS_NS" observability-grafana kube-prometheus-stack-grafana)}"
 PROM_SVC="${PROM_SVC:-$(pick_service "$OBS_NS" observability-kube-prometh-prometheus kube-prometheus-stack-prometheus prometheus-operated)}"
 POSTGRES_SVC="${POSTGRES_SVC:-$(pick_service "$TASKFLOW_NS" taskflow-postgresql)}"
+ALLURE_SVC="${ALLURE_SVC:-$(pick_service "$TASKFLOW_NS" e2e-runner-allure-service)}"
 
 if [[ -z "${INGRESS_SVC:-}" || -z "${GRAFANA_SVC:-}" || -z "${PROM_SVC:-}" ]]; then
   echo "Failed to auto-detect one or more services."
@@ -65,6 +66,7 @@ start_pf "$INGRESS_NS" "$INGRESS_SVC" 8080 80
 start_pf "$OBS_NS" "$GRAFANA_SVC" 3000 80
 start_pf "$OBS_NS" "$PROM_SVC" 9090 9090
 start_pf "$TASKFLOW_NS" "$POSTGRES_SVC" 5432 5432 || echo "Postgres service not found, skipping..."
+[[ -n "${ALLURE_SVC:-}" ]] && start_pf "$TASKFLOW_NS" "$ALLURE_SVC" 5050 5050 || echo "Allure service not found, skipping..."
 
 echo ""
 echo "Ready:"
@@ -72,6 +74,7 @@ echo "- Ingress:    http://localhost:8080"
 echo "- Grafana:    http://localhost:3000"
 echo "- Prometheus: http://localhost:9090"
 echo "- Postgres:   localhost:5432 (if enabled)"
+echo "- Allure:     http://localhost:5050 (if e2e-runner installed)"
 echo ""
 echo "Press Ctrl+C to stop all forwards."
 

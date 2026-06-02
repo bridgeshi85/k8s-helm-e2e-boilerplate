@@ -2,13 +2,13 @@
 
 A full-stack boilerplate demonstrating a production-like Kubernetes workflow: multi-service application deployed via Helm, full observability stack (Prometheus + Grafana + Loki), E2E testing with Playwright/Pytest, and load testing with k6.
 
-![TaskFlow UI](image.png)
+![TaskFlow UI](docs/images/taskflow-ui.png)
 
 ---
 
 ## Architecture Overview
 
-![Architecture Diagram](architecture-diagram.png)
+![Architecture Diagram](docs/images/architecture-diagram.png)
 
 ### Request Flow
 
@@ -227,10 +227,14 @@ The `e2e-runner` chart runs a Playwright + Pytest test suite inside the cluster 
 
 ### Build the test image
 
+Use tests from this project directory:
+
+- `https://github.com/bridgeshi85/playwright-pytest-allure-framework/tree/main/playwright-automation-test`
+
 ```bash
 # The default image is gto310/playwright-test-agent:latest
-# To use your own test image:
-docker build -t <your_repo>/playwright-test-agent:latest ./path/to/tests
+# To use your own test image (build from playwright-automation-test directory):
+docker build -t <your_repo>/playwright-test-agent:latest ./playwright-automation-test
 kind load docker-image <your_repo>/playwright-test-agent:latest  # if using Kind
 ```
 
@@ -241,15 +245,6 @@ helm upgrade --install e2e-runner ./charts/e2e-runner \
   -n taskflow \
   --set envConfig.baseUrl="http://taskflow-gateway.taskflow.svc.cluster.local:80" \
   --set job.image.repository=gto310/playwright-test-agent
-```
-
-### Run as Helm test hook
-
-```bash
-helm upgrade --install e2e-runner ./charts/e2e-runner \
-  -n taskflow --set helmTest.enabled=true
-
-helm test taskflow -n taskflow
 ```
 
 ### Watch test execution and retrieve artifacts
@@ -267,6 +262,20 @@ kubectl cp -n taskflow ${POD}:/output/logs      ./allure-results
 kubectl cp -n taskflow ${POD}:/output/reports   ./allure-reports
 kubectl cp -n taskflow ${POD}:/output/screenshots ./screenshots
 ```
+
+### View Allure report
+
+Make sure `port-forward-all.sh` is running (or forward manually):
+
+```bash
+kubectl port-forward -n taskflow svc/e2e-runner-allure-service 5050:5050
+```
+
+Then open the latest report in your browser:
+
+[http://localhost:5050/allure-docker-service/projects/default/reports/latest/index.html?redirect=false](http://localhost:5050/allure-docker-service/projects/default/reports/latest/index.html?redirect=false)
+
+![Allure Report](docs/images/allure-report.png)
 
 ### Schedule nightly tests (CronJob)
 
