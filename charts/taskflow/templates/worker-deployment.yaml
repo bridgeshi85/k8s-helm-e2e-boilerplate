@@ -28,6 +28,8 @@ spec:
           env:
             - name: DATABASE_URL
               value: {{ include "taskflow.databaseUrl" . | quote }}
+            - name: RABBITMQ_URL
+              value: "amqp://{{ .Values.rabbitmq.auth.username }}:{{ .Values.rabbitmq.auth.password }}@{{ .Values.rabbitmq.fullnameOverride }}:5672/"
             {{- range $key, $val := .Values.worker.env }}
             - name: {{ $key }}
               value: {{ $val | quote }}

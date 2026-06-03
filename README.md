@@ -1,273 +1,283 @@
-# K8s Helm E2E Boilerplate: TaskFlow
+# K8s Helm E2E Boilerplate — TaskFlow
 
-A robust full-stack portfolio project demonstrating a modern DevOps workflow. This project deploys a 3-tier application (React Frontend, FastAPI Backend, Redis/PostgreSQL) using **Helm** on Kubernetes, utilizing **GitHub Actions** for CI/CD.
+A full-stack boilerplate demonstrating a production-like Kubernetes workflow: multi-service application deployed via Helm, full observability stack (Prometheus + Grafana + Loki), E2E testing with Playwright/Pytest, and load testing with k6.
 
-## 🚀 Project Overview
+![TaskFlow UI](docs/images/taskflow-ui.png)
 
-The goal of this project is to showcase a complete production-like environment setup and automated testing pipeline.
-*   **Frontend**: React application served via Nginx.
-*   **Gateway**: Nginx API Gateway for routing and chaos testing.
-*   **Backend**: Python FastAPI service.
-*   **Worker**: Python worker service for async task processing.
-*   **Message Broker**: RabbitMQ for event-driven task dispatching.
-*   **Database**: PostgreSQL (persistent storage).
-*   **Infrastructure**: Kubernetes (K8s) managed via Helm Charts.
-*   **CI/CD**: GitHub Actions pipeline for building Docker images, linting, and running tests.
+---
 
-## 📂 Repository Structure
+## Architecture Overview
+
+![Architecture Diagram](docs/images/architecture-diagram.png)
+
+### Request Flow
+
+1. User submits a task via the React frontend.
+2. The request goes through the Nginx Ingress → Gateway → Backend (`POST /tasks`).
+3. Backend saves the task to PostgreSQL (status: `PENDING`) and publishes a `TaskCreated` event to RabbitMQ.
+4. Backend returns `202 Accepted` immediately.
+5. Worker consumes the event, simulates processing (`RUNNING` → 5s delay → `COMPLETED`), and updates PostgreSQL.
+6. Frontend polls `GET /tasks` to show the updated status.
+
+### Components
+
+| Component | Technology | Role |
+|-----------|-----------|------|
+| Frontend | React + Nginx | Static UI served via Nginx |
+| Gateway | Nginx | Reverse proxy: routes `/api/*` → Backend, `/` → Frontend |
+| Backend | Python FastAPI | REST API, task CRUD, publishes to RabbitMQ |
+| Worker | Python asyncio + aio_pika | Consumes RabbitMQ messages, updates task status |
+| Message Broker | RabbitMQ | Async task dispatching |
+| Database | PostgreSQL | Persistent task storage |
+| Observability | Prometheus + Grafana + Loki | Metrics, dashboards, log aggregation |
+| E2E Testing | Playwright + Pytest + Allure | Browser-level automated test runner (Helm Job/CronJob) |
+| Load Testing | k6 | HTTP load testing with Prometheus integration |
+
+---
+
+## Repository Structure
 
 ```
 .
-├── .github/workflows      # CI/CD configurations (GitHub Actions)
-├── charts/                # Helm charts for Kubernetes deployment
-│   ├── taskflow/          # Main application chart
-│   ├── observability/     # Prometheus/Grafana/Loki and related stack
-│   └── e2e-runner/        # E2E test runner (Playwright + Pytest + Allure)
+├── charts/
+│   ├── taskflow/          # Main application Helm chart
+│   │   ├── templates/     # Backend, Frontend, Gateway, Worker, Ingress ...
+│   │   └── values.yaml    # Image tags, resource limits, credentials
+│   ├── observability/     # Prometheus + Grafana + Loki + Promtail
+│   └── e2e-runner/        # Playwright/Pytest E2E test Job/CronJob
 ├── src/
-│   ├── frontend/          # React application code
-│   ├── gateway/           # Nginx gateway configuration
-│   ├── backend/           # FastAPI application code
-│   └── worker/            # Async worker service code
-├── image.png              # UI screenshot in docs
-├── LICENSE                # MIT license
-└── README.md              # Project documentation
+│   ├── frontend/          # React application
+│   ├── gateway/           # Nginx gateway config
+│   ├── backend/           # FastAPI service (main.py, models.py)
+│   └── worker/            # Async worker service
+├── k6_load_test/          # k6 load test scripts
+├── scripts/
+│   └── port-forward-all.sh  # One-command local port forwarding
+└── README.md
 ```
 
-## 🛠️ Prerequisites
+---
 
-*   Docker & Docker Compose
-*   Kubernetes Cluster (Minikube, Kind, or Cloud Provider)
-*   kubectl
-*   Helm 3+
-*   NGINX Ingress Controller (`ingress-nginx`), installed at cluster level
-*   Node.js & Python 3.10+ (for local development)
+## Prerequisites
 
-## 🐳 Building Docker Images
+| Tool | Purpose |
+|------|---------|
+| Docker | Building images |
+| Kubernetes cluster | Minikube, Kind, or cloud provider |
+| `kubectl` | Cluster management |
+| Helm 3+ | Chart deployment |
+| NGINX Ingress Controller | Cluster-level ingress |
+| `k6` _(optional)_ | Load testing |
 
-### 1. Preparation: Log in to Docker Hub
+---
 
-First, ensure that you are logged into Docker Hub in your terminal.
+## Quick Start
 
-```bash
-# In the terminal, enter your Docker Hub username and password (or Access Token) as prompted
-docker login
-```
+### Step 1 — Build and push Docker images
 
-### 2. Build and Push
-
-Execute the following commands in the root directory of the project:
-
-A. Build and Push Images
+The chart uses pre-built images (`gto310/taskflow-*`). To use your own:
 
 ```bash
-# 1. Build the image for each component
-docker build -t <your_repo>/taskflow-backend:v1.0.0 ./src/backend
+# Replace <your_repo> with your Docker Hub username
+docker build -t <your_repo>/taskflow-backend:v1.0.0  ./src/backend
 docker build -t <your_repo>/taskflow-frontend:v1.0.0 ./src/frontend
-docker build -t <your_repo>/taskflow-gateway:v1.0.0 ./src/gateway
-docker build -t <your_repo>/taskflow-worker:v1.0.0 ./src/worker
+docker build -t <your_repo>/taskflow-gateway:v1.0.0  ./src/gateway
+docker build -t <your_repo>/taskflow-worker:v1.0.0   ./src/worker
 
-# 2. Push the image
 docker push <your_repo>/taskflow-backend:v1.0.0
 docker push <your_repo>/taskflow-frontend:v1.0.0
 docker push <your_repo>/taskflow-gateway:v1.0.0
 docker push <your_repo>/taskflow-worker:v1.0.0
 ```
 
+Then update `charts/taskflow/values.yaml`:
 
-## 🏃‍♂️ Getting Started
+```yaml
+backend:
+  image:
+    repository: <your_repo>/taskflow-backend
+    tag: v1.0.0
 
-1. install the dependency
-```bash
-# Enter the chart directory
-cd charts/taskflow
+frontend:
+  image:
+    repository: <your_repo>/taskflow-frontend
+    tag: v1.0.0
 
-# Download dependencies (this will generate .tgz files in the charts/ directory)
-helm dependency build
-
-# Return to the root directory
-cd ../..
+worker:
+  image:
+    repository: <your_repo>/taskflow-worker
+    tag: v1.0.0
 ```
 
-2. **Configuration:**
-Check `charts/taskflow/values.yaml` to configure image tags, resource limits, and database credentials. Update the new images for Gateway and Worker if needed.
+### Step 2 — Install the NGINX Ingress Controller (once per cluster)
 
-3. **Deploy the observability stack**
-```bash
-helm upgrade --install observability ./charts/observability -n observability --create-namespace
-```
-
-4. **Install NGINX Ingress Controller (cluster-level, once per cluster)**
 ```bash
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
-kubectl create namespace ingress-nginx
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx
-```
-Verify controller is ready:
-```bash
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+  -n ingress-nginx --create-namespace
+
+# Wait until the controller is running
 kubectl get pods -n ingress-nginx
-kubectl get svc -n ingress-nginx
 ```
 
-> Ingress Controller is cluster infrastructure (north-south traffic entry), not part of the app chart and not part of the observability stack itself.
+### Step 3 — Install Helm chart dependencies
 
-5. Deploy the application to your Kubernetes cluster.
 ```bash
-# Install the chart
-helm upgrade taskflow ./charts/taskflow -n taskflow --create-namespace --install
+cd charts/taskflow
+helm dependency build
+cd ../..
+
+cd charts/observability
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+helm dependency build
+cd ../..
+```
+
+### Step 4 — Deploy the observability stack
+
+```bash
+helm upgrade --install observability ./charts/observability \
+  -n observability --create-namespace
+```
+
+This installs:
+- **Prometheus** — scrapes metrics from Backend, Gateway, RabbitMQ, and PostgreSQL via `ServiceMonitors`
+- **Grafana** — dashboards (default credentials: `admin` / `prom-operator`)
+- **Loki + Promtail** — log aggregation from all pods
+
+Grafana default credentials when installing via the bundled `observability` chart:
+
+- Username: `admin`
+- Password: `strongpassword`
+
+### Step 5 — Deploy the application
+
+```bash
+helm upgrade --install taskflow ./charts/taskflow \
+  -n taskflow --create-namespace
+```
+
+Watch pods come up:
+
+```bash
+kubectl get pods -n taskflow -w
+```
+
+Expected output (all pods `Running`):
+
+```
+NAME                                  READY   STATUS    
+taskflow-backend-xxx                  1/1     Running
+taskflow-frontend-xxx                 1/1     Running
+taskflow-gateway-xxx                  2/2     Running   # nginx + metrics exporter
+taskflow-worker-xxx                   1/1     Running
+taskflow-postgresql-0                 1/1     Running
+taskflow-rabbitmq-0                   1/1     Running
+```
+
+> **Troubleshooting**: `CrashLoopBackOff` on the worker usually indicates RabbitMQ/PostgreSQL connectivity or credential mismatch. Check with:
+> ```bash
+> kubectl logs -n taskflow -l app.kubernetes.io/component=worker --tail=50
+> ```
+
+### Step 6 — Access the application
+
+Run the port-forward helper script to open all endpoints in one command:
+
+```bash
+./scripts/port-forward-all.sh
+```
+
+| Endpoint | URL |
+|----------|-----|
+| Application (via Ingress) | http://localhost:8080 |
+| Grafana | http://localhost:3000 |
+| Prometheus | http://localhost:9090 |
+| PostgreSQL | localhost:5432 |
+
+Or forward only the app:
+
+```bash
+kubectl port-forward svc/taskflow-gateway -n taskflow 8080:80
 ```
 
 ---
 
-## Verify Deployment Status
-
-### 1. Check Pod Status
-
-Run the following command:
+## Verify the Deployment
 
 ```bash
+# Check all pods are running
 kubectl get pods -n taskflow
-```
 
-> You should see Pods for Frontend, Gateway, Backend, Worker, RabbitMQ, Postgres, all in `Running` or `Completed` status.
->
-> ⚠️ **Note**: If you see `CrashLoopBackOff`, it's usually a DB connection issue or a misconfigured Secret.
-
-### 2. Check Service
-
-Run the following command:
-
-```bash
+# Check services
 kubectl get svc -n taskflow
-```
 
-**Expected Result:**
-> You should see the following Services:
-> - `taskflow-gateway`
-> - `taskflow-backend`
-> - `taskflow-frontend`
-> - `taskflow-rabbitmq`
-> - `taskflow-postgresql`
-
-Validate by helm test
-```
+# Run the built-in Helm test (curl against backend health)
 helm test taskflow -n taskflow
 ```
 
 ---
 
+## E2E Testing (e2e-runner)
 
-### 3. Enable Port Forwarding
+The `e2e-runner` chart runs a Playwright + Pytest test suite inside the cluster as a Kubernetes Job.
 
+### Build the test image
 
-Open a new terminal window:
+Use tests from this project directory:
 
-```bash
-# Format: kubectl port-forward svc/<service-name> <local-port>:<container-port>
-kubectl port-forward svc/taskflow-frontend -n taskflow 8080:80
-```
-
-Open your browser and go to: [http://localhost:8080](http://localhost:8080)
-
-### 4. Local Compose Quick Start (Gateway + Worker + RabbitMQ)
+- `https://github.com/bridgeshi85/playwright-pytest-allure-framework/tree/main/playwright-automation-test`
 
 ```bash
-docker compose up --build
+# The default image is gto310/playwright-test-agent:latest
+# To use your own test image (build from playwright-automation-test directory):
+docker build -t <your_repo>/playwright-test-agent:latest ./playwright-automation-test
+kind load docker-image <your_repo>/playwright-test-agent:latest  # if using Kind
 ```
 
-Open the UI via [http://localhost:8080](http://localhost:8080). API requests now go through the gateway at `/api/*`, and task creation returns `202 Accepted` while the worker updates status asynchronously.
-
-You should able to see page like below:
-![alt text](image.png)
-
----
-
-## 🧪 E2E Testing with e2e-runner (Step 1)
-
-The `e2e-runner` Helm chart provides an automated E2E testing solution using **Playwright + Pytest + Allure**.
-
-### Features
-
-- **Kubernetes Job/CronJob**: Run tests as one-time Job or scheduled CronJob
-- **Parallel Execution**: Configurable pytest-xdist workers
-- **Retry Mechanism**: Automatic retry on failure
-- **Artifact Storage**: PVC persistence for Allure results, screenshots, videos, and traces
-- **Helm Test Hook**: Integrate with `helm test` for CI/CD pipelines
-
-### Prerequisites
-
-1. Build the E2E test image from `playwright-pytest-allure-framework`:
-
-```bash
-# Clone the playwright-automation-test repository
-cd playwright-automation-test
-
-# Build the image
-docker build -t playwright-automation-test:latest .
-
-# Load into Kind/Minikube (if using local cluster)
-kind load docker-image playwright-automation-test:latest
-```
-
-### Quick Start
-
-1. **Deploy the E2E runner**:
+### Run as a one-time Job
 
 ```bash
 helm upgrade --install e2e-runner ./charts/e2e-runner \
   -n taskflow \
-  --set test.baseUrl="http://taskflow-gateway:80" \
-  --set job.image.repository=playwright-automation-test
+  --set envConfig.baseUrl="http://taskflow-gateway.taskflow.svc.cluster.local:80" \
+  --set job.image.repository=gto310/playwright-test-agent
 ```
 
-2. **Check test execution**:
+### Watch test execution and retrieve artifacts
 
 ```bash
-# Watch the Job
+# Watch the job
 kubectl get jobs -n taskflow -w
 
-# View logs
-kubectl logs -n taskflow -l app.kubernetes.io/name=e2e-runner --tail=100 -f
-```
-
-3. **Retrieve test artifacts**:
-
-```bash
-# Find the PVC
-kubectl get pvc -n taskflow
+# Stream logs
+kubectl logs -n taskflow -l app.kubernetes.io/name=e2e-runner -f
 
 # Copy artifacts to local
-kubectl cp taskflow/<pvc-pod-name>:/app/allure-results ./allure-results
-kubectl cp taskflow/<pvc-pod-name>:/app/screenshots ./screenshots
+POD=$(kubectl get pod -n taskflow -l app.kubernetes.io/name=e2e-runner -o name | head -1)
+kubectl cp -n taskflow ${POD}:/output/logs      ./allure-results
+kubectl cp -n taskflow ${POD}:/output/reports   ./allure-reports
+kubectl cp -n taskflow ${POD}:/output/screenshots ./screenshots
 ```
 
-### Configuration Options
+### View Allure report
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `job.kind` | Job type: `Job` or `CronJob` | `Job` |
-| `job.cronSchedule` | Cron expression (for CronJob) | `0 2 * * *` |
-| `job.image.repository` | E2E test image | `playwright-automation-test` |
-| `test.baseUrl` | Target application URL | `http://taskflow-gateway:80` |
-| `test.pytest.workers` | Parallel workers | `4` |
-| `test.pytest.reruns` | Retry count | `1` |
-| `test.pytest.markers` | Pytest markers filter | `""` |
-| `persistence.enabled` | Enable PVC storage | `true` |
-| `persistence.pvc.size` | PVC size | `5Gi` |
-
-### Example: Run with Helm Test
+Make sure `port-forward-all.sh` is running (or forward manually):
 
 ```bash
-# Enable helm test hook
-helm upgrade --install e2e-runner ./charts/e2e-runner \
-  -n taskflow \
-  --set helmTest.enabled=true
-
-# Run as helm test
-helm test e2e-runner -n e2e-runner --logs
+kubectl port-forward -n taskflow svc/e2e-runner-allure-service 5050:5050
 ```
 
-### Example: CronJob for Nightly Tests
+Then open the latest report in your browser:
+
+[http://localhost:5050/allure-docker-service/projects/default/reports/latest/index.html?redirect=false](http://localhost:5050/allure-docker-service/projects/default/reports/latest/index.html?redirect=false)
+
+![Allure Report](docs/images/allure-report.png)
+
+### Schedule nightly tests (CronJob)
 
 ```bash
 helm upgrade --install e2e-runner ./charts/e2e-runner \
@@ -277,14 +287,69 @@ helm upgrade --install e2e-runner ./charts/e2e-runner \
   --set test.pytest.markers="regression"
 ```
 
-### Next Steps (Step 2 - Allure Report Service)
+### Key configuration options
 
-In Step 2, we will add:
-- Allure Report Deployment to serve test reports via web UI
-- Automatic report generation after test completion
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `job.kind` | `Job` or `CronJob` | `Job` |
+| `job.cronSchedule` | Cron expression | `0 2 * * *` |
+| `job.image.repository` | E2E test image | `gto310/playwright-test-agent` |
+| `envConfig.baseUrl` | Target URL (in-cluster) | `http://taskflow-gateway.taskflow.svc.cluster.local:80` |
+| `persistence.enabled` | Persist artifacts to PVC | `true` |
+| `persistence.pvc.size` | PVC size | `5Gi` |
+| `helmTest.enabled` | Register as `helm test` hook | `true` |
 
 ---
 
-## 📜 License
+## Load Testing (k6)
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+The `k6_load_test/` directory contains a mixed-load script that sends `POST /api/tasks` and `GET /api/tasks` traffic with `X-Request-ID` headers for distributed tracing.
+
+### Prerequisites
+
+```bash
+# macOS
+brew install k6
+```
+
+### Run
+
+Make sure `port-forward-all.sh` is running first, then:
+
+```bash
+# Default: 20 VUs for 50s
+k6 run k6_load_test/taskflow-loadtest.js
+
+# Custom concurrency and duration
+BASE_URL=http://localhost:8080 VUS=40 DURATION=5m k6 run k6_load_test/taskflow-loadtest.js
+```
+
+Built-in thresholds: error rate `< 1%`, P95 latency `< 500ms`.
+
+### Observe during load test
+
+Open Grafana at http://localhost:3000 and watch:
+
+- `http_requests_total` / `http_request_duration_seconds` — backend HTTP metrics
+- `rabbitmq_*` — message queue depth, delivery rate, connections
+- Loki logs — search by `X-Request-ID` to trace individual requests end-to-end
+
+---
+
+## Observability Details
+
+| Component | How metrics are collected |
+|-----------|--------------------------|
+| Backend | `prometheus-fastapi-instrumentator` exposes `/metrics`; scraped by ServiceMonitor |
+| Gateway | `nginx-prometheus-exporter` sidecar scrapes `/stub_status`; scraped by ServiceMonitor |
+| RabbitMQ | Built-in Prometheus plugin; scraped by ServiceMonitor |
+| PostgreSQL | `postgres-exporter` sidecar; scraped by ServiceMonitor |
+| Logs | Promtail DaemonSet ships all pod logs to Loki |
+
+Grafana default login: `admin` / `prom-operator`
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
