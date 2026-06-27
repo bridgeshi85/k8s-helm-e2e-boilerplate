@@ -18,7 +18,8 @@ k8s-helm-e2e-boilerplate/
 ## 核心约束
 
 - commit message 遵循 conventional commits（`fix:` / `feat:` / `chore:`）
-- 代码变更必须附带对应测试
+- Helm chart 变更后必须执行 `helm lint` 验证
+- 修改 k6 脚本后必须可用（不强制写 UT）
 - 不做 spec 范围外的假设性改动，有疑问先确认
 
 ## 分支策略
