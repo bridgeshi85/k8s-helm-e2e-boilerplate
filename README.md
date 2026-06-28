@@ -1,6 +1,8 @@
-# K8s Helm E2E Boilerplate — TaskFlow
+# obs-lab (k8s-helm-e2e-boilerplate) — TaskFlow
 
-A full-stack boilerplate demonstrating a production-like Kubernetes workflow: multi-service application deployed via Helm, full observability stack (Prometheus + Grafana + Loki), E2E testing with Playwright/Pytest, and load testing with k6.
+Observability Helm Lab — 云原生可观测性与 Helm 试验田。
+
+一站式 Helm 试验场：多服务部署、全量可观测栈（Prometheus + Grafana + Loki）、E2E 测试（Playwright/Pytest）、负载测试（k6）。
 
 ![TaskFlow UI](docs/images/taskflow-ui.png)
 
