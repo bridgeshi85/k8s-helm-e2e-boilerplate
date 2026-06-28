@@ -1,6 +1,6 @@
-# k8s-helm-e2e-boilerplate
+# obs-lab (k8s-helm-e2e-boilerplate)
 
-Kubernetes + Helm 的 E2E 测试样板项目。
+Observability Helm Lab — 云原生可观测性与 Helm 试验田。
 
 ---
 
