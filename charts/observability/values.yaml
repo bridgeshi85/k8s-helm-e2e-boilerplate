@@ -96,3 +96,28 @@ promtail:
     clients:
       - url: http://observability-loki-gateway.observability/loki/api/v1/push
         tenant_id: 1
+
+# Grafana Dashboards
+dashboards:
+  # 是否启用自定义 Dashboard
+  enabled: true
+  
+  # Nginx Gateway Dashboard
+  nginx-gateway:
+    enabled: true
+  
+  # PostgreSQL Dashboard
+  postgresql:
+    enabled: true
+  
+  # RabbitMQ Dashboard
+  rabbitmq:
+    enabled: true
+  
+  # Container Resources Dashboard
+  container-resources:
+    enabled: true
+  
+  # k6 Load Test Dashboard
+  k6-load-test:
+    enabled: true
