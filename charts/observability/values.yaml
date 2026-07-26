@@ -104,7 +104,11 @@ promtail:
 dashboards:
   # 是否启用自定义 Dashboard
   enabled: true
-  
+
+  # TaskFlow 应用所在的 namespace（taskflow chart 是独立 release，
+  # 和本 chart 的 Release.Namespace 不是同一个，因此不能用 .Release.Namespace）
+  taskflowNamespace: taskflow
+
   # Nginx Gateway Dashboard
   nginx-gateway:
     enabled: true
