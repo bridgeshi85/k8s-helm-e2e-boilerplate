@@ -2,6 +2,8 @@
 
 Observability Helm Lab — 云原生可观测性与 Helm 试验田。
 
+> 架构说明、常用命令（helm/k6/e2e-runner 等）见 [CLAUDE.md](CLAUDE.md)，本文件只记录协作约束。
+
 ---
 
 ## 仓库结构
