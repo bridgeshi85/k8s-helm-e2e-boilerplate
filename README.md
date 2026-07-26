@@ -147,7 +147,7 @@ helm upgrade --install observability ./charts/observability \
 
 This installs:
 - **Prometheus** — scrapes metrics from Backend, Gateway, RabbitMQ, and PostgreSQL via `ServiceMonitors`
-- **Grafana** — dashboards (default credentials: `admin` / `prom-operator`)
+- **Grafana** — dashboards (default credentials: `admin` / `strongpassword`)
 - **Loki + Promtail** — log aggregation from all pods
 
 Grafana default credentials when installing via the bundled `observability` chart:
@@ -323,10 +323,12 @@ Make sure `port-forward-all.sh` is running first, then:
 k6 run k6_load_test/taskflow-loadtest.js
 
 # Custom concurrency and duration
-BASE_URL=http://localhost:8080 VUS=40 DURATION=5m k6 run k6_load_test/taskflow-loadtest.js
+BASE_URL=http://localhost:8080/api VUS=40 DURATION=5m k6 run k6_load_test/taskflow-loadtest.js
 ```
 
 Built-in thresholds: error rate `< 1%`, P95 latency `< 500ms`.
+
+To feed the k6 run's own metrics (VUs, throughput, latency percentiles) into the Grafana `k6 Load Test` dashboard, see [`k6_load_test/README.md`](k6_load_test/README.md#4-推送指标到-prometheus供-grafana-k6-load-test-dashboard-使用) for the `-o experimental-prometheus-rw` setup.
 
 ### Observe during load test
 

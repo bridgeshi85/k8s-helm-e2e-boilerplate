@@ -1,0 +1,109 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+**obs-lab** (repo name: `k8s-helm-e2e-boilerplate`) is a Kubernetes/Helm sandbox combining a small microservices app (TaskFlow) with a full observability stack, E2E testing, and load testing — used to experiment with Helm charts, dashboards, and cluster-level test automation.
+
+## Repository Structure
+
+```
+charts/
+  taskflow/       # Main app chart: Frontend, Gateway, Backend, Worker, Ingress + Bitnami postgresql/rabbitmq deps
+  observability/  # kube-prometheus-stack + Loki + Promtail dependency chart, plus custom Grafana dashboards
+  e2e-runner/     # Playwright/Pytest E2E suite packaged as a Helm Job/CronJob, with Allure report server
+src/
+  frontend/       # React UI
+  gateway/        # Nginx reverse proxy config (routes /api/* -> backend, / -> frontend)
+  backend/        # FastAPI service (main.py, models.py) — task CRUD, publishes to RabbitMQ
+  worker/         # asyncio + aio_pika consumer — processes tasks, updates PostgreSQL
+k6_load_test/     # k6 load test script
+scripts/
+  port-forward-all.sh  # forwards Ingress/Grafana/Prometheus/Postgres/Allure in one command
+```
+
+## Architecture
+
+Request flow: Frontend → Nginx Ingress → Gateway → Backend (`POST /tasks`). Backend writes the task to PostgreSQL (`PENDING`), publishes a `TaskCreated` event to RabbitMQ, and returns `202` immediately. Worker consumes the event, simulates processing (`RUNNING` → delay → `COMPLETED`), and updates PostgreSQL. Frontend polls `GET /tasks`. A request ID is propagated through headers/context (`context.py` on both backend and worker) so a single request can be traced end-to-end across logs.
+
+Each of the three Helm charts is deployed as an independent release into its own namespace and they interact only through in-cluster DNS / labels:
+- `observability` (namespace `observability`) — must be installed before or independently of `taskflow`; provides Prometheus (via `ServiceMonitor` CRDs that `taskflow` templates create), Grafana, and Loki/Promtail (scrapes all pod logs cluster-wide via DaemonSet, not just `taskflow`).
+- `taskflow` (namespace `taskflow`) — the application; backend/gateway expose `/metrics` scraped by their own `ServiceMonitor` templates, and PostgreSQL/RabbitMQ get scraped via Bitnami subchart-provided exporters.
+- `e2e-runner` (namespace `taskflow`) — runs against a running `taskflow` release via `envConfig.baseUrl` (in-cluster service DNS), as either a one-shot `Job` or a scheduled `CronJob`.
+
+### Grafana dashboards (`charts/observability`)
+
+New dashboards: add JSON to `charts/observability/dashboards/<name>.json` + `dashboards.<name>.enabled: true` in `values.yaml` (loaded raw via `$.Files.Get`, never template-parsed). A legacy inline template (`templates/dashboards/taskflow-app.yaml`) still exists — if editing dashboards inlined in `templates/dashboards/*.yaml`, escape any `{{placeholder}}` (e.g. Grafana's `legendFormat`) as `{{ "{{" }}placeholder{{ "}}" }}`, since those files go through Helm's template engine and raw `{{ }}` breaks `helm upgrade`/`helm template`.
+
+## Commands
+
+### Deploy dependencies (once per cluster / after chart dependency version bumps)
+
+```bash
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace
+
+cd charts/taskflow && helm dependency build && cd ../..
+cd charts/observability && helm dependency build && cd ../..
+```
+
+### Deploy / upgrade a chart
+
+```bash
+helm upgrade --install observability ./charts/observability -n observability --create-namespace
+helm upgrade --install taskflow ./charts/taskflow -n taskflow --create-namespace
+```
+
+### Validate a chart change before deploying
+
+```bash
+helm lint ./charts/<chart>
+helm template <release> ./charts/<chart> -n <namespace>   # catches template parse errors without touching the cluster
+```
+
+### Run the built-in Helm test (backend health check)
+
+```bash
+helm test taskflow -n taskflow
+```
+
+### Local access
+
+```bash
+./scripts/port-forward-all.sh
+# Ingress: :8080, Grafana: :3000, Prometheus: :9090, Postgres: :5432, Allure: :5050
+```
+Grafana login for the bundled `observability` chart: `admin` / `strongpassword` (values.yaml sets this — do not trust the older `admin`/`prom-operator` reference still present in README.md, it's stale).
+
+### E2E tests (`e2e-runner` chart)
+
+```bash
+helm upgrade --install e2e-runner ./charts/e2e-runner -n taskflow \
+  --set envConfig.baseUrl="http://taskflow-gateway.taskflow.svc.cluster.local:80" \
+  --set job.image.repository=gto310/playwright-test-agent
+
+kubectl logs -n taskflow -l app.kubernetes.io/name=e2e-runner -f
+kubectl port-forward -n taskflow svc/e2e-runner-allure-service 5050:5050
+```
+Test source lives in a separate repo (`playwright-pytest-allure-framework`); this chart only packages a pre-built test image as a Job/CronJob. Set `job.kind=CronJob` + `job.cronSchedule` for scheduled runs.
+
+### Load test (k6)
+
+```bash
+k6 run k6_load_test/taskflow-loadtest.js
+BASE_URL=http://localhost:8080 VUS=40 DURATION=5m k6 run k6_load_test/taskflow-loadtest.js
+```
+Requires `port-forward-all.sh` running first. Thresholds: error rate `< 1%`, P95 latency `< 500ms`.
+
+## Constraints (from AGENTS.md)
+
+- Commit messages follow Conventional Commits (`fix:` / `feat:` / `chore:`).
+- Any Helm chart change must pass `helm lint` (and ideally `helm template`) before being considered done.
+- k6 script changes must be runnable end-to-end; unit tests are not required for them.
+- Don't make speculative changes outside the requested scope — ask first if unclear.
+- Never commit directly to `main`. Branch from `main` as `fix/`, `feat/`, or `chore/`, then PR — unless already working on a non-main branch, in which case commit directly to it without opening a new branch/PR.

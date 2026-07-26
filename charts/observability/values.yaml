@@ -70,6 +70,9 @@ kube-prometheus-stack:
       # 允许跨 Namespace 扫描
       serviceMonitorNamespaceSelector: {}
 
+      # 允许 k6 通过 remote-write 直接推送压测指标（k6_* 系列，供 k6-load-test dashboard 使用）
+      enableRemoteWriteReceiver: true
+
   grafana:
     sidecar:
       dashboards:
@@ -96,3 +99,32 @@ promtail:
     clients:
       - url: http://observability-loki-gateway.observability/loki/api/v1/push
         tenant_id: 1
+
+# Grafana Dashboards
+dashboards:
+  # 是否启用自定义 Dashboard
+  enabled: true
+
+  # TaskFlow 应用所在的 namespace（taskflow chart 是独立 release，
+  # 和本 chart 的 Release.Namespace 不是同一个，因此不能用 .Release.Namespace）
+  taskflowNamespace: taskflow
+
+  # Nginx Gateway Dashboard
+  nginx-gateway:
+    enabled: true
+  
+  # PostgreSQL Dashboard
+  postgresql:
+    enabled: true
+  
+  # RabbitMQ Dashboard
+  rabbitmq:
+    enabled: true
+  
+  # Container Resources Dashboard
+  container-resources:
+    enabled: true
+  
+  # k6 Load Test Dashboard
+  k6-load-test:
+    enabled: true
