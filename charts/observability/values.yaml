@@ -70,6 +70,9 @@ kube-prometheus-stack:
       # 允许跨 Namespace 扫描
       serviceMonitorNamespaceSelector: {}
 
+      # 允许 k6 通过 remote-write 直接推送压测指标（k6_* 系列，供 k6-load-test dashboard 使用）
+      enableRemoteWriteReceiver: true
+
   grafana:
     sidecar:
       dashboards:

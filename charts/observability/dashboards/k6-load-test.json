@@ -265,7 +265,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.50, rate(k6_http_req_duration_bucket[1m]))",
+          "expr": "k6_http_req_duration_p50",
           "legendFormat": "p50",
           "refId": "A"
         },
@@ -274,7 +274,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.90, rate(k6_http_req_duration_bucket[1m]))",
+          "expr": "k6_http_req_duration_p90",
           "legendFormat": "p90",
           "refId": "B"
         },
@@ -283,7 +283,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, rate(k6_http_req_duration_bucket[1m]))",
+          "expr": "k6_http_req_duration_p95",
           "legendFormat": "p95",
           "refId": "C"
         }
@@ -380,7 +380,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(k6_checks_passes_total[1m]) / rate(k6_checks_total[1m]) * 100",
+          "expr": "avg(k6_checks_rate) * 100",
           "legendFormat": "Check Pass Rate",
           "refId": "B"
         }
