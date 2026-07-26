@@ -1,5 +1,6 @@
+{{- if .Values.dashboards.enabled }}
 {{- range $name, $config := .Values.dashboards }}
-{{- if $config.enabled }}
+{{- if and (ne $name "enabled") (kindIs "map" $config) $config.enabled }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -11,5 +12,6 @@ metadata:
 data:
   {{ $name }}.json: |
     {{ $.Files.Get (printf "dashboards/%s.json" $name) | nindent 4 }}
+{{- end }}
 {{- end }}
 {{- end }}

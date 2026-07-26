@@ -147,7 +147,7 @@ helm upgrade --install observability ./charts/observability \
 
 This installs:
 - **Prometheus** — scrapes metrics from Backend, Gateway, RabbitMQ, and PostgreSQL via `ServiceMonitors`
-- **Grafana** — dashboards (default credentials: `admin` / `prom-operator`)
+- **Grafana** — dashboards (default credentials: `admin` / `strongpassword`)
 - **Loki + Promtail** — log aggregation from all pods
 
 Grafana default credentials when installing via the bundled `observability` chart:

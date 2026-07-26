@@ -25,7 +25,7 @@ data:
           "targets": [
             {
               "expr": "sum(rate(http_requests_total{namespace=\"taskflow\"}[1m])) by (handler, method)",
-              "legendFormat": "{{method}} {{handler}}"
+              "legendFormat": "{{ "{{" }}method{{ "}}" }} {{ "{{" }}handler{{ "}}" }}"
             }
           ],
           "fieldConfig": {
@@ -168,7 +168,7 @@ data:
           "targets": [
             {
               "expr": "sum(rate(http_requests_total{namespace=\"taskflow\"}[1m])) by (status_code)",
-              "legendFormat": "HTTP {{status_code}}"
+              "legendFormat": "HTTP {{ "{{" }}status_code{{ "}}" }}"
             }
           ],
           "fieldConfig": {
@@ -188,7 +188,7 @@ data:
             {
               "expr": "sum(rate(http_request_duration_seconds_bucket{namespace=\"taskflow\"}[1m])) by (le)",
               "format": "heatmap",
-              "legendFormat": "{{le}}"
+              "legendFormat": "{{ "{{" }}le{{ "}}" }}"
             }
           ]
         }

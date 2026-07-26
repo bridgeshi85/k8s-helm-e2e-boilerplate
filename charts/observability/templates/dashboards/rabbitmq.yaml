@@ -25,7 +25,7 @@ data:
           "targets": [
             {
               "expr": "rabbitmq_queue_messages_ready{namespace=\"taskflow\"}",
-              "legendFormat": "{{queue}}"
+              "legendFormat": "{{ "{{" }}queue{{ "}}" }}"
             }
           ],
           "fieldConfig": {
@@ -45,7 +45,7 @@ data:
           "targets": [
             {
               "expr": "rabbitmq_queue_messages_unacked{namespace=\"taskflow\"}",
-              "legendFormat": "{{queue}} unacked"
+              "legendFormat": "{{ "{{" }}queue{{ "}}" }} unacked"
             }
           ],
           "fieldConfig": {
@@ -65,7 +65,7 @@ data:
           "targets": [
             {
               "expr": "sum(rate(rabbitmq_channel_messages_published_total{namespace=\"taskflow\"}[1m])) by (queue)",
-              "legendFormat": "published {{queue}}"
+              "legendFormat": "published {{ "{{" }}queue{{ "}}" }}"
             }
           ],
           "fieldConfig": {
@@ -84,7 +84,7 @@ data:
           "targets": [
             {
               "expr": "sum(rate(rabbitmq_channel_messages_delivered_ack_total{namespace=\"taskflow\"}[1m])) by (queue)",
-              "legendFormat": "consumed {{queue}}"
+              "legendFormat": "consumed {{ "{{" }}queue{{ "}}" }}"
             }
           ],
           "fieldConfig": {

@@ -123,7 +123,7 @@ data:
           "targets": [
             {
               "expr": "pg_stat_database_numbackends{namespace=\"taskflow\", datname!~\"template.*|postgres\"}",
-              "legendFormat": "{{datname}}"
+              "legendFormat": "{{ "{{" }}datname{{ "}}" }}"
             }
           ],
           "fieldConfig": {
@@ -142,11 +142,11 @@ data:
           "targets": [
             {
               "expr": "sum(rate(pg_stat_database_xact_commit_total{namespace=\"taskflow\", datname!~\"template.*|postgres\"}[1m])) by (datname)",
-              "legendFormat": "commits {{datname}}"
+              "legendFormat": "commits {{ "{{" }}datname{{ "}}" }}"
             },
             {
               "expr": "sum(rate(pg_stat_database_xact_rollback_total{namespace=\"taskflow\", datname!~\"template.*|postgres\"}[1m])) by (datname)",
-              "legendFormat": "rollbacks {{datname}}"
+              "legendFormat": "rollbacks {{ "{{" }}datname{{ "}}" }}"
             }
           ],
           "fieldConfig": {
@@ -188,7 +188,7 @@ data:
           "targets": [
             {
               "expr": "rate(pg_stat_database_deadlocks_total{namespace=\"taskflow\", datname!~\"template.*|postgres\"}[1m])",
-              "legendFormat": "deadlocks/s {{datname}}"
+              "legendFormat": "deadlocks/s {{ "{{" }}datname{{ "}}" }}"
             }
           ],
           "fieldConfig": {
