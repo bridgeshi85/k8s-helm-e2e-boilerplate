@@ -81,6 +81,36 @@ kube-prometheus-stack:
     adminUser: admin
     adminPassword: strongpassword
 
+    # Tempo + Loki 目前都没有走 sidecar 自动发现，手动注册成 datasource
+    # （Loki 之前一直没配，顺手在这次一起补上）
+    additionalDataSources:
+      - name: Tempo
+        type: tempo
+        uid: tempo
+        access: proxy
+        url: http://observability-tempo:3200
+        jsonData:
+          # Tempo 日志面板里点 "Logs" 能跳转到 Loki 里对应 trace_id 的日志
+          tracesToLogsV2:
+            datasourceUid: loki
+            spanStartTimeShift: "-1h"
+            spanEndTimeShift: "1h"
+            filterByTraceID: true
+          serviceMap:
+            datasourceUid: prometheus
+      - name: Loki
+        type: loki
+        uid: loki
+        access: proxy
+        url: http://observability-loki-gateway
+        jsonData:
+          # Loki 日志里如果带 trace_id 字段，能一键跳到 Tempo 的对应 trace
+          derivedFields:
+            - datasourceUid: tempo
+              matcherRegex: 'trace_id=(\w+)'
+              name: TraceID
+              url: '$${__value.raw}'
+
   # 关掉这些在 Kind 里抓不到或者不需要的组件
   kubeEtcd:
     enabled: false
@@ -99,6 +129,23 @@ promtail:
     clients:
       - url: http://observability-loki-gateway.observability/loki/api/v1/push
         tenant_id: 1
+
+
+tempo:
+  enabled: true
+
+  tempo:
+    # 默认已经打开 receivers.otlp.protocols.{grpc:4317, http:4318}，不用额外配置
+    resources:
+      limits:
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+  # sandbox 环境不挂 PVC，Pod 重启 trace 数据就丢，可接受
+  persistence:
+    enabled: false
 
 # Grafana Dashboards
 dashboards:

@@ -5,7 +5,7 @@ backend:
   replicaCount: 1
   image:
     repository: gto310/taskflow-backend
-    tag: v1.0.0
+    tag: v1.1.0-otel
     pullPolicy: Always 
   service:
     type: ClusterIP
@@ -20,6 +20,8 @@ backend:
   env:
     LOG_LEVEL: "INFO"
     TASK_QUEUE_NAME: "task_queue"
+    OTEL_SERVICE_NAME: "taskflow-backend"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://observability-tempo.observability.svc.cluster.local:4317"
 
 frontend:
   replicaCount: 1
@@ -68,7 +70,7 @@ worker:
   replicaCount: 1
   image:
     repository: gto310/taskflow-worker
-    tag: v1.0.0
+    tag: v1.1.0-otel
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -79,6 +81,8 @@ worker:
       memory: 64Mi
   env:
     TASK_QUEUE_NAME: "task_queue"
+    OTEL_SERVICE_NAME: "taskflow-worker"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://observability-tempo.observability.svc.cluster.local:4317"
 
 
 # PostgreSQL

@@ -5,11 +5,23 @@ import aio_pika
 import os
 import json
 
+# tracing 要在 models 之前初始化：models 模块级会立刻跑 DB 重试连接逻辑并打日志，
+# 需要保证 OTel 的 LoggingInstrumentor 已经就绪（即便晚了，logging_config.py 里
+# 的 RequestIDFilter 也有默认值兜底，这里只是让 trace_id 尽量从最早的日志就开始带上）
+from tracing import setup_tracing
+from opentelemetry import propagate, trace
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+
+tracer = setup_tracing("taskflow-backend")
+
 from models import get_db, Task, Base, engine, TaskCreate
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter
 from logging_config import get_logger
 from context import set_request_id, get_request_id
+
+SQLAlchemyInstrumentor().instrument(engine=engine)
 
 # 建立数据库表结构
 Base.metadata.create_all(bind=engine)
@@ -21,6 +33,7 @@ app = FastAPI(
     version="1.0.0",
     root_path="/api"
 )
+FastAPIInstrumentor.instrument_app(app)
 
 # RabbitMQ settings
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
@@ -28,27 +41,37 @@ TASK_QUEUE_NAME = os.getenv("TASK_QUEUE_NAME", "task_queue")
 
 
 async def publish_task_created(task_id: int) -> None:
-    logger.info("Publishing TaskCreated event for task_id=%s", task_id)
+    with tracer.start_as_current_span("rabbitmq.publish") as span:
+        span.set_attribute("messaging.system", "rabbitmq")
+        span.set_attribute("messaging.destination", TASK_QUEUE_NAME)
+        span.set_attribute("task.id", task_id)
 
-    try:
-        connection = await aio_pika.connect_robust(RABBITMQ_URL)
-        current_req_id = get_request_id()  # 获取当前上下文的 ID
-        async with connection:
-            channel = await connection.channel()
-            await channel.declare_queue(TASK_QUEUE_NAME, durable=True)
-            message = aio_pika.Message(
-                body=json.dumps({"task_id": task_id}).encode(),
-                content_type="application/json",
-                headers={"x-request-id": current_req_id},
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-                type="TaskCreated",
-            )
-            await channel.default_exchange.publish(message, routing_key=TASK_QUEUE_NAME)
-            rabbitmq_messages_published_total.inc()
-            logger.info("TaskCreated event published successfully for task_id=%s", task_id)
-    except Exception as e:
-        logger.error("Failed to publish TaskCreated event for task_id=%s: %s", task_id, str(e))
-        raise
+        logger.info("Publishing TaskCreated event for task_id=%s", task_id)
+
+        try:
+            connection = await aio_pika.connect_robust(RABBITMQ_URL)
+            current_req_id = get_request_id()  # 获取当前上下文的 ID
+
+            # 把当前 trace context 注入 message headers，worker 消费时用它续上链路
+            trace_headers: dict = {}
+            propagate.inject(trace_headers)
+
+            async with connection:
+                channel = await connection.channel()
+                await channel.declare_queue(TASK_QUEUE_NAME, durable=True)
+                message = aio_pika.Message(
+                    body=json.dumps({"task_id": task_id}).encode(),
+                    content_type="application/json",
+                    headers={"x-request-id": current_req_id, **trace_headers},
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                    type="TaskCreated",
+                )
+                await channel.default_exchange.publish(message, routing_key=TASK_QUEUE_NAME)
+                rabbitmq_messages_published_total.inc()
+                logger.info("TaskCreated event published successfully for task_id=%s", task_id)
+        except Exception as e:
+            logger.error("Failed to publish TaskCreated event for task_id=%s: %s", task_id, str(e))
+            raise
 
 
 rabbitmq_messages_published_total = Counter(
