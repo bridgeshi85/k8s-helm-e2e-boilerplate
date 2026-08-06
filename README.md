@@ -149,6 +149,7 @@ This installs:
 - **Prometheus** — scrapes metrics from Backend, Gateway, RabbitMQ, and PostgreSQL via `ServiceMonitors`
 - **Grafana** — dashboards (default credentials: `admin` / `strongpassword`)
 - **Loki + Promtail** — log aggregation from all pods
+- **Tempo** — OTLP trace receiver (gRPC `:4317` / HTTP `:4318`) for distributed tracing from Backend/Worker
 
 Grafana default credentials when installing via the bundled `observability` chart:
 
@@ -349,8 +350,16 @@ Open Grafana at http://localhost:3000 and watch:
 | RabbitMQ | Built-in Prometheus plugin; scraped by ServiceMonitor |
 | PostgreSQL | `postgres-exporter` sidecar; scraped by ServiceMonitor |
 | Logs | Promtail DaemonSet ships all pod logs to Loki |
+| Traces | Backend/Worker use the OpenTelemetry SDK, exporting spans via OTLP gRPC to Tempo (`OTEL_EXPORTER_OTLP_ENDPOINT`); trace context propagates across the RabbitMQ hop via manual `inject`/`extract` on message headers. See [`docs/otel-tracing-plan.md`](docs/otel-tracing-plan.md) |
 
-Grafana default login: `admin` / `prom-operator`
+Grafana default login: `admin` / `strongpassword` (see [Step 4](#step-4--deploy-the-observability-stack) — the `prom-operator` default some older kube-prometheus-stack docs reference does **not** apply here, this chart sets its own password)
+
+### Viewing a trace
+
+1. `POST /api/tasks` through the app (UI, curl, or a k6 run)
+2. Grafana → **Explore** → pick the **Tempo** datasource
+3. Search by `service.name = taskflow-backend`, or paste a known trace ID directly
+4. The waterfall view shows the request spanning both pods: `POST /tasks` (backend) → `rabbitmq.publish` → `worker.process_task` (worker) → DB spans on both sides. Because Loki is also wired up as a datasource with `tracesToLogsV2`, you can jump from a log line to its trace and back.
 
 ---
 

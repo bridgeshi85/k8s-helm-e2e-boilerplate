@@ -71,7 +71,7 @@ worker:
   image:
     repository: gto310/taskflow-worker
     tag: v1.1.0-otel
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   resources:
     limits:
       cpu: 200m
