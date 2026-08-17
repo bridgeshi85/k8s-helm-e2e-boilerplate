@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 
 # 和 backend 一样，tracing 要在 models 之前初始化（见 backend/main.py 里的注释）
 from tracing import setup_tracing
+from metrics import setup_metrics
 from opentelemetry import propagate, trace
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 tracer = setup_tracing("taskflow-worker")
+meter = setup_metrics("taskflow-worker")
 
 from models import get_db, Task, engine
 from logging_config import get_logger

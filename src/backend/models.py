@@ -1,14 +1,18 @@
 import os
 import logging
-from typing import Any
+import threading
+from typing import Any, Iterable
+
 from sqlalchemy import Column, Integer, String, create_engine, text, event
-from sqlalchemy.orm import sessionmaker, \
-    declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base
 from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_fixed, before_log
-from prometheus_client import Gauge
 
-# from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+# [新增] OTel 指标相关导入
+from opentelemetry import metrics
+from opentelemetry.metrics import Observation
+
+# [删除] from prometheus_client import Gauge
 
 from logging_config import get_logger
 
@@ -35,17 +39,6 @@ DATABASE_URL = os.getenv(
     "postgresql://taskflow:taskflowDatabase@localhost:5432/taskflow"
 )
 
-# --- Prometheus Metrics 定义 ---
-db_connection_pool_active = Gauge(
-    "db_connection_pool_active",
-    "Number of database connections currently checked out from the pool",
-)
-db_connection_pool_size = Gauge(
-    "db_connection_pool_size",
-    "Total number of database connections in the pool (active + idle)",
-)
-
-
 @retry(
     stop=stop_after_attempt(30),
     wait=wait_fixed(2),
@@ -59,7 +52,7 @@ def create_engine_with_retry():
         pool_size=20,  # 连接数
         max_overflow=10,  # 最大溢出连接数
         pool_timeout=30,  # 获取连接的最大等待时间（秒）
-        pool_pre_ping=True,  # 悲观连接检测（防止断网/DB重启导致拿到失效连接）
+        pool_pre_ping=True,  # 悲观连接检测
     )
 
     try:
@@ -75,30 +68,68 @@ def create_engine_with_retry():
 
 engine = create_engine_with_retry()
 
+# ---------------------------------------------------------
+# OTel 指标重构：维护本地状态与注册回调
+# ---------------------------------------------------------
 
-# --- 精准监听真实连接池事件 ---
+# 1. 维护线程安全的连接状态计数器
+class DBPoolStats:
+    def __init__(self):
+        self.active_connections = 0
+        self.total_connections = 0
+        self.lock = threading.Lock()
+
+pool_stats = DBPoolStats()
+
+# 2. 精准监听真实连接池事件，更新本地状态
 @event.listens_for(engine, 'checkout')
 def receive_checkout(dbapi_connection, connection_record, connection_proxy):
-    db_connection_pool_active.inc()
-
+    with pool_stats.lock:
+        pool_stats.active_connections += 1
 
 @event.listens_for(engine, 'checkin')
 def receive_checkin(dbapi_connection, connection_record):
-    db_connection_pool_active.dec()
-
+    with pool_stats.lock:
+        pool_stats.active_connections -= 1
 
 @event.listens_for(engine, 'connect')
 def receive_connect(dbapi_connection, connection_record):
-    db_connection_pool_size.inc()
-
+    with pool_stats.lock:
+        pool_stats.total_connections += 1
 
 @event.listens_for(engine, 'close')
 def receive_close(dbapi_connection, connection_record):
-    db_connection_pool_size.dec()
+    with pool_stats.lock:
+        pool_stats.total_connections -= 1
 
+# 3. 定义 OTel 所需的回调函数 (每次 OTel 导出数据时会调用它们)
+def get_active_connections_callback(options) -> Iterable[Observation]:
+    with pool_stats.lock:
+        yield Observation(pool_stats.active_connections)
+
+def get_pool_size_callback(options) -> Iterable[Observation]:
+    with pool_stats.lock:
+        yield Observation(pool_stats.total_connections)
+
+# 4. 获取全局 Meter 并注册 ObservableGauge
+# （只要 main.py 中优先执行了 setup_metrics 设置全局 Provider，这里就能顺利挂载）
+meter = metrics.get_meter("taskflow-backend")
+
+meter.create_observable_gauge(
+    name="db_connection_pool_active",
+    callbacks=[get_active_connections_callback],
+    description="Number of database connections currently checked out from the pool"
+)
+
+meter.create_observable_gauge(
+    name="db_connection_pool_size",
+    callbacks=[get_pool_size_callback],
+    description="Total number of database connections in the pool (active + idle)"
+)
+
+# ---------------------------------------------------------
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 
 def get_db():
     db = SessionLocal()

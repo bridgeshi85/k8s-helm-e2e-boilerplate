@@ -9,15 +9,15 @@ import json
 # 需要保证 OTel 的 LoggingInstrumentor 已经就绪（即便晚了，logging_config.py 里
 # 的 RequestIDFilter 也有默认值兜底，这里只是让 trace_id 尽量从最早的日志就开始带上）
 from tracing import setup_tracing
+from metrics import setup_metrics
 from opentelemetry import propagate, trace
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 tracer = setup_tracing("taskflow-backend")
+meter = setup_metrics("taskflow-backend")
 
 from models import get_db, Task, Base, engine, TaskCreate
-from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_client import Counter
 from logging_config import get_logger
 from context import set_request_id, get_request_id
 
@@ -38,6 +38,11 @@ FastAPIInstrumentor.instrument_app(app)
 # RabbitMQ settings
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
 TASK_QUEUE_NAME = os.getenv("TASK_QUEUE_NAME", "task_queue")
+
+rabbitmq_messages_published_total = meter.create_counter(
+    name="rabbitmq_messages_published_total",
+    description="Number of tasks successfully published to RabbitMQ",
+)
 
 
 async def publish_task_created(task_id: int) -> None:
@@ -67,17 +72,11 @@ async def publish_task_created(task_id: int) -> None:
                     type="TaskCreated",
                 )
                 await channel.default_exchange.publish(message, routing_key=TASK_QUEUE_NAME)
-                rabbitmq_messages_published_total.inc()
+                rabbitmq_messages_published_total.add(1)
                 logger.info("TaskCreated event published successfully for task_id=%s", task_id)
         except Exception as e:
             logger.error("Failed to publish TaskCreated event for task_id=%s: %s", task_id, str(e))
             raise
-
-
-rabbitmq_messages_published_total = Counter(
-    'rabbitmq_messages_published_total',
-    'Number of tasks successfully published to RabbitMQ',
-)
 
 
 @app.middleware("http")
@@ -134,9 +133,6 @@ async def create_task(task: TaskCreate, db: Session = Depends(get_db)):
         }
     }
 
-
-# 使用 prometheus_fastapi_instrumentator 自动为 FastAPI 应用添加 Prometheus 指标
-Instrumentator().instrument(app).expose(app)
 
 if __name__ == "__main__":
     import uvicorn
