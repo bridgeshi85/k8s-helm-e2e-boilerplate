@@ -44,6 +44,12 @@ rabbitmq_messages_published_total = meter.create_counter(
     description="Number of tasks successfully published to RabbitMQ",
 )
 
+# [新增] 定义 Worker 侧的业务吞吐量指标
+worker_tasks_processed_total = meter.create_counter(
+    name="worker_tasks_processed_total",
+    description="Total number of tasks processed by the worker",
+)
+
 
 async def publish_task_created(task_id: int) -> None:
     with tracer.start_as_current_span("rabbitmq.publish") as span:

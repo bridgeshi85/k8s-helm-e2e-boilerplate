@@ -194,6 +194,18 @@ opentelemetry-collector:
       memory: 128Mi
 
   # 让 Prometheus 自动发现并抓取 Collector 暴露的指标
+  # chart 默认的 ports.metrics(8888) 是 Collector 自身内部遥测端口，跟下面
+  # pipeline 里 `prometheus` exporter 监听的 8889（真正承载 backend/worker
+  # 业务指标）不是一回事；这里复用 "metrics" 这个端口名指向 8889，正好匹配
+  # chart 默认生成的 ServiceMonitor（endpoints: - port: metrics），否则
+  # Service/ServiceMonitor 不会暴露 8889，Prometheus 永远抓不到业务指标。
+  ports:
+    metrics:
+      enabled: true
+      containerPort: 8889
+      servicePort: 8889
+      protocol: TCP
+
   serviceMonitor:
     enabled: true
 

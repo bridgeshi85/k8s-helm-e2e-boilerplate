@@ -21,7 +21,7 @@ backend:
     LOG_LEVEL: "INFO"
     TASK_QUEUE_NAME: "task_queue"
     OTEL_SERVICE_NAME: "taskflow-backend"
-    OTEL_EXPORTER_OTLP_ENDPOINT: "http://observability-tempo.observability.svc.cluster.local:4317"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://observability-opentelemetry-collector.observability.svc.cluster.local:4317"
 
 frontend:
   replicaCount: 1
@@ -82,7 +82,7 @@ worker:
   env:
     TASK_QUEUE_NAME: "task_queue"
     OTEL_SERVICE_NAME: "taskflow-worker"
-    OTEL_EXPORTER_OTLP_ENDPOINT: "http://observability-tempo.observability.svc.cluster.local:4317"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://observability-opentelemetry-collector.observability.svc.cluster.local:4317"
 
 
 # PostgreSQL
