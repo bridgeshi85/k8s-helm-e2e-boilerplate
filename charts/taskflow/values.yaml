@@ -29,7 +29,7 @@ backend:
     # --- chaos / bottleneck toggles (default off / current values) ---
     # SLOW_QUERY_ENABLED 演示时再开；开启后每次 POST /tasks 有 SLOW_QUERY_PROBABILITY
     # 概率在写库前插入 pg_sleep(SLOW_QUERY_SECONDS)，并挂 chaos.slow_query span
-    SLOW_QUERY_ENABLED: "false"
+    SLOW_QUERY_ENABLED: "true"
     SLOW_QUERY_PROBABILITY: "0.2"
     SLOW_QUERY_SECONDS: "3"
     DB_POOL_SIZE: "20"

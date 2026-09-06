@@ -85,7 +85,7 @@ async def process_message(message: aio_pika.IncomingMessage) -> None:
                     with tracer.start_as_current_span("worker.mark_running"):
                         update_task_status(task_id, "RUNNING")
 
-                    await asyncio.sleep(5)
+                    # await asyncio.sleep(5)
 
                     with tracer.start_as_current_span("worker.mark_completed"):
                         update_task_status(task_id, "COMPLETED")
