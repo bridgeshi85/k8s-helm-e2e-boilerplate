@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from tracing import setup_tracing
 from metrics import setup_metrics  # [新增] 引入 metrics 初始化模块
 
+from opentelemetry import context as otel_context
 from opentelemetry import propagate, trace
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
@@ -57,45 +58,52 @@ async def process_message(message: aio_pika.IncomingMessage) -> None:
         req_id = message.headers.get("x-request-id")
         set_request_id(req_id)
 
-        # 从 backend 塞进 message headers 的 trace context 续上链路
+        # 从 backend 塞进 message headers 的 trace context 续上链路。
+        # 必须先 attach 再 start_as_current_span(不能只靠 start_as_current_span
+        # 的 context= 参数): 那个参数只用来算 span 的 parent link, 之后
+        # use_span() 实际 attach 的仍是 attach 前的 ambient context, 会导致
+        # otel_ctx 里的 Baggage(如 test.load_test_id)传不到子 span 上。
         otel_ctx = propagate.extract(message.headers)
+        otel_ctx_token = otel_context.attach(otel_ctx)
+        try:
+            with tracer.start_as_current_span("worker.process_task") as span:
+                span.set_attribute("messaging.system", "rabbitmq")
+                span.set_attribute("messaging.destination", TASK_QUEUE_NAME)
 
-        with tracer.start_as_current_span("worker.process_task", context=otel_ctx) as span:
-            span.set_attribute("messaging.system", "rabbitmq")
-            span.set_attribute("messaging.destination", TASK_QUEUE_NAME)
+                logger.info("Worker received task", extra={"trace_id": req_id})
 
-            logger.info("Worker received task", extra={"trace_id": req_id})
+                task_id = payload.get("task_id")
+                if not task_id:
+                    # [新增] 如果没有 task_id，记录为失败
+                    tasks_processed_total.add(1, {"status": "failed_missing_id"})
+                    return
 
-            task_id = payload.get("task_id")
-            if not task_id:
-                # [新增] 如果没有 task_id，记录为失败
-                tasks_processed_total.add(1, {"status": "failed_missing_id"})
-                return
-            
-            span.set_attribute("task.id", task_id)
+                span.set_attribute("task.id", task_id)
 
-            start_time = time.monotonic()
-            try:
-                with tracer.start_as_current_span("worker.mark_running"):
-                    update_task_status(task_id, "RUNNING")
+                start_time = time.monotonic()
+                try:
+                    with tracer.start_as_current_span("worker.mark_running"):
+                        update_task_status(task_id, "RUNNING")
 
-                await asyncio.sleep(5)
+                    await asyncio.sleep(5)
 
-                with tracer.start_as_current_span("worker.mark_completed"):
-                    update_task_status(task_id, "COMPLETED")
+                    with tracer.start_as_current_span("worker.mark_completed"):
+                        update_task_status(task_id, "COMPLETED")
 
-                logger.info("Worker completed task", extra={"trace_id": req_id})
+                    logger.info("Worker completed task", extra={"trace_id": req_id})
 
-                # [新增] 成功处理完任务，打上 success 标签并计数 +1
-                tasks_processed_total.add(1, {"status": "success"})
+                    # [新增] 成功处理完任务，打上 success 标签并计数 +1
+                    tasks_processed_total.add(1, {"status": "success"})
 
-            except Exception as e:
-                # [新增] 处理异常，打上 failed 标签并计数 +1
-                tasks_processed_total.add(1, {"status": "failed"})
-                logger.error("Failed to process task_id=%s: %s", task_id, str(e))
-                raise
-            finally:
-                task_processing_duration.record(time.monotonic() - start_time)
+                except Exception as e:
+                    # [新增] 处理异常，打上 failed 标签并计数 +1
+                    tasks_processed_total.add(1, {"status": "failed"})
+                    logger.error("Failed to process task_id=%s: %s", task_id, str(e))
+                    raise
+                finally:
+                    task_processing_duration.record(time.monotonic() - start_time)
+        finally:
+            otel_context.detach(otel_ctx_token)
 
 
 async def main() -> None:

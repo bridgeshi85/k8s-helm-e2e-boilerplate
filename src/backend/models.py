@@ -1,5 +1,6 @@
 import os
 import logging
+import random
 import threading
 from typing import Any, Iterable
 
@@ -49,9 +50,9 @@ def create_engine_with_retry():
     # --- 增加高并发与高可用配置 ---
     temp_engine = create_engine(
         DATABASE_URL,
-        pool_size=20,  # 连接数
-        max_overflow=10,  # 最大溢出连接数
-        pool_timeout=30,  # 获取连接的最大等待时间（秒）
+        pool_size=int(os.getenv("DB_POOL_SIZE", "20")),  # 连接数
+        max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "10")),  # 最大溢出连接数
+        pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "30")),  # 获取连接的最大等待时间（秒）
         pool_pre_ping=True,  # 悲观连接检测
     )
 
@@ -130,6 +131,20 @@ meter.create_observable_gauge(
 # ---------------------------------------------------------
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def maybe_inject_slow_query(db, span):
+    """Chaos hook: hold a real DB connection for N seconds via pg_sleep, gated by SLOW_QUERY_ENABLED and probability."""
+    is_enabled = os.getenv("SLOW_QUERY_ENABLED", "false").lower() == "true"
+    probability = float(os.getenv("SLOW_QUERY_PROBABILITY", "0.2"))
+    seconds = float(os.getenv("SLOW_QUERY_SECONDS", "3.0"))
+
+    if is_enabled and random.random() < probability:
+        span.set_attribute("chaos.slow_query.injected", True)
+        span.set_attribute("chaos.slow_query.seconds", seconds)
+        logger.warning(f"Injecting {seconds}s slow query into DB transaction...")
+        db.execute(text("SELECT pg_sleep(:s)"), {"s": seconds})
+    else:
+        span.set_attribute("chaos.slow_query.injected", False)
 
 def get_db():
     db = SessionLocal()

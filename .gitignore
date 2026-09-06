@@ -7,3 +7,4 @@ src/frontend/package-lock.json
 charts/taskflow/charts/*.tgz
 charts/observability/charts/*.tgz
 .idea
+src/worker/__pycache__/*

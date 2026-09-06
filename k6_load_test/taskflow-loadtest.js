@@ -19,6 +19,15 @@ export const options = {
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080/api';
 
+// 整次压测共用一个 ID（通过 setup() 生成一次，分发给所有 VU），方便之后在
+// Tempo/Grafana 里按 "这是第几批压测" 过滤 trace。可用 LOAD_TEST_ID 环境变量
+// 覆盖，便于外部脚本传入自定义的批次标识。
+export function setup() {
+    const loadTestId = __ENV.LOAD_TEST_ID || `k6-${Date.now()}-${randomString(6)}`;
+    console.log(`[k6][load-test-id] ${loadTestId}`);
+    return { loadTestId };
+}
+
 function safeJsonPath(response, path) {
     if (!response || !response.body) {
         return undefined;
@@ -62,7 +71,7 @@ function logFailure({ url, payload, params, res, checks }) {
 }
 
 // 2. 核心场景逻辑 (VU 执行的代码)
-export default function () {
+export default function (data) {
     // 动态生成测试数据，避免数据库缓存命中或唯一索引冲突
     const payload = JSON.stringify({
         title: `Task-${randomString(8)}`,
@@ -77,6 +86,8 @@ export default function () {
             'Content-Type': 'application/json',
             // 注入 Trace ID
             'X-Request-ID': `k6-perf-${randomString(10)}`,
+            // 整批压测共用同一个 ID，落到 OTel Baggage -> test.load_test_id span 属性
+            'X-Load-Test-ID': data.loadTestId,
         },
     };
 

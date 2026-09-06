@@ -137,11 +137,36 @@ tempo:
   tempo:
     # 默认已经打开 receivers.otlp.protocols.{grpc:4317, http:4318}，不用额外配置
     resources:
+      # 候选）下会被 OOMKilled，进入 crash-loop，调大到 1Gi。
       limits:
-        memory: 512Mi
+        cpu: 1000m      # [新增] 防止无限制占用，但给予充足计算空间
+        memory: 1.5Gi   # [修改] 配合高频并发，进一步放宽内存
       requests:
-        cpu: 50m
-        memory: 128Mi
+        cpu: 300m       # [修改] 保证基础计算资源，避免启动即节流
+        memory: 512Mi
+
+    # 默认 timeoutSeconds:5 / failureThreshold:3（约 30s 容忍窗口）在压测期间
+    # 反复查同一个 TraceQL（比如 Grafana 面板开着短 auto-refresh 盯
+    # test.load_test_id）导致查询变慢时太容易被打满，kubelet 会直接强杀重启，
+    # 反而在最需要看 trace 的时候把 Tempo 打断。放宽到 10s / 6 次失败（约 60s）。
+    livenessProbe:
+      httpGet:
+        path: /ready
+        port: 3200
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 10
+      failureThreshold: 6
+      successThreshold: 1
+    readinessProbe:
+      httpGet:
+        path: /ready
+        port: 3200
+      initialDelaySeconds: 20
+      periodSeconds: 10
+      timeoutSeconds: 10
+      failureThreshold: 6
+      successThreshold: 1
 
   # sandbox 环境不挂 PVC，Pod 重启 trace 数据就丢，可接受
   persistence:

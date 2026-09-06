@@ -91,9 +91,57 @@ helm test taskflow -n taskflow
 ```
 Grafana login for the bundled `observability` chart: `admin` / `strongpassword` (values.yaml sets this).
 
+### Remote kind cluster
+
+The `kind` cluster this repo targets does **not** run on the local machine — it runs on a remote host reached over SSH (`gto_3@<host-ip>:2222`; the host's LAN IP is DHCP-assigned and drifts over time — confirm the current value with the user rather than assuming a previously-seen one). `kubectl`/`helm` talk to it directly via `export KUBECONFIG=~/kube-config.yaml` (no docker context involved). Anything that needs the remote Docker daemon (`docker build`, `docker exec`, `kind load`) must use the `wsl-remote` docker context, which points at `ssh://gto_3@<host-ip>:2222`; if the host's IP has changed since the context was last set, update it first:
+
+```bash
+docker context update wsl-remote --docker "host=ssh://gto_3@<current-host-ip>:2222"
+```
+
+**Known gotcha — stale outbound proxy IP.** Both the remote host's Docker daemon and the kind node's own containerd (inside the `kind-control-plane` container) route registry/PyPI traffic through an HTTP proxy at `http://<host-ip>:7078`, configured by literal IP rather than hostname in a few places. When the host's LAN IP changes, these go stale and builds/pulls fail with `no route to host` / `proxyconnect tcp: dial tcp ...`. To fix (substitute the stale and current IPs):
+
+- Docker daemon config — needs `sudo` on the remote host; ask the user to run it themselves rather than requesting their password:
+
+  ```bash
+  ssh -p 2222 gto_3@<host-ip>
+  sudo sed -i 's/<old-ip>:7078/<new-ip>:7078/g' \
+    /etc/systemd/system/docker.service.d/http-proxy.conf /etc/docker/daemon.json
+  sudo systemctl daemon-reload && sudo systemctl restart docker
+  ```
+
+- kind node's containerd — no sudo needed, `gto_3` is in the `docker` group so `docker exec` into the node works directly:
+
+  ```bash
+  docker --context wsl-remote exec kind-control-plane sh -c \
+    "sed -i 's/<old-ip>:7078/<new-ip>:7078/g' /etc/systemd/system.conf.d/proxy-default-environment.conf \
+     && systemctl daemon-reload && systemctl restart containerd"
+  ```
+
+Even after both are fixed, `docker build` on the `wsl-remote` context may still fail to resolve PyPI packages (BuildKit doesn't always inherit the daemon's proxy env) — pass the proxy explicitly as build-args as a reliable workaround:
+
+```bash
+--build-arg HTTP_PROXY=http://<host-ip>:7078 --build-arg HTTPS_PROXY=http://<host-ip>:7078
+```
+
 ### Building images
 
 `src/{backend,frontend,gateway,worker}` build with plain `docker build`. If building on Apple Silicon for a cluster running `amd64` nodes (true for the `kind` cluster this repo targets in dev), pass `--platform linux/amd64` — a native-arch build silently produces a working local image that fails at container startup with `exec format error` once scheduled, no build-time warning.
+
+`backend`/`worker` are set to `imagePullPolicy: IfNotPresent` specifically so local dev iteration can skip the Docker Hub round trip entirely — build on the remote host and `kind load docker-image` straight into the node's containerd:
+
+```bash
+docker --context wsl-remote build --platform linux/amd64 \
+  --build-arg HTTP_PROXY=http://<host-ip>:7078 --build-arg HTTPS_PROXY=http://<host-ip>:7078 \
+  -t gto310/taskflow-backend:<new-tag> src/backend
+
+ssh -p 2222 gto_3@<host-ip> "kind load docker-image gto310/taskflow-backend:<new-tag> --name kind"
+
+export KUBECONFIG=~/kube-config.yaml
+helm upgrade taskflow ./charts/taskflow -n taskflow --reuse-values --set backend.image.tag=<new-tag>
+```
+
+This only works because of `IfNotPresent` — with `imagePullPolicy: Always` (still the case for `frontend`/`gateway`, and the default if this ever changes), kubelet always re-resolves the tag against the registry regardless of what's already loaded into the node, so a `kind load`-only image 404s and you'd have to `docker --context wsl-remote push` instead (the remote host already has Docker Hub credentials cached for the `gto310` account, so that's still the fallback path for those two services). If this chart is ever pointed at a real multi-node cluster, switch `backend`/`worker` back to `Always` too — `kind load` only reaches the single `kind-control-plane` node.
 
 ### E2E tests (`e2e-runner` chart)
 
