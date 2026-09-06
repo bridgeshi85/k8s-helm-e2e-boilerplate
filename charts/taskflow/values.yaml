@@ -5,8 +5,12 @@ backend:
   replicaCount: 1
   image:
     repository: gto310/taskflow-backend
-    tag: v1.0.0
-    pullPolicy: Always 
+    tag: v1.2.0-otel
+    # IfNotPresent so local dev iteration can `kind load docker-image` a
+    # rebuilt image straight into the node without a Docker Hub round trip
+    # (see "Remote kind cluster" in CLAUDE.md). If this chart is ever used
+    # against a real multi-node cluster, switch back to Always.
+    pullPolicy: IfNotPresent
   service:
     type: ClusterIP
     port: 8000
@@ -20,13 +24,29 @@ backend:
   env:
     LOG_LEVEL: "INFO"
     TASK_QUEUE_NAME: "task_queue"
+    OTEL_SERVICE_NAME: "taskflow-backend"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://observability-opentelemetry-collector.observability.svc.cluster.local:4317"
+    # --- chaos / bottleneck toggles (default off / current values) ---
+    # SLOW_QUERY_ENABLED 演示时再开；开启后每次 POST /tasks 有 SLOW_QUERY_PROBABILITY
+    # 概率在写库前插入 pg_sleep(SLOW_QUERY_SECONDS)，并挂 chaos.slow_query span
+    SLOW_QUERY_ENABLED: "true"
+    SLOW_QUERY_PROBABILITY: "0.2"
+    SLOW_QUERY_SECONDS: "3"
+    DB_POOL_SIZE: "20"
+    DB_MAX_OVERFLOW: "10"
+    DB_POOL_TIMEOUT: "30"
 
 frontend:
   replicaCount: 1
   image:
     repository: gto310/taskflow-frontend
     tag: v1.0.0
-    pullPolicy: Always
+    # IfNotPresent so kubelet uses the image already cached on the kind node
+    # instead of re-resolving against Docker Hub on every pod restart (see
+    # "Remote kind cluster" / stale outbound proxy gotcha in CLAUDE.md). If
+    # this chart is ever used against a real multi-node cluster, switch back
+    # to Always.
+    pullPolicy: IfNotPresent
   service:
     type: ClusterIP
     port: 80
@@ -43,7 +63,8 @@ gateway:
   image:
     repository: nginx
     tag: 1.27-alpine
-    pullPolicy: Always
+    # See the same note on frontend.image.pullPolicy above.
+    pullPolicy: IfNotPresent
   service:
     type: ClusterIP
     port: 80
@@ -68,7 +89,8 @@ worker:
   replicaCount: 1
   image:
     repository: gto310/taskflow-worker
-    tag: v1.0.0
+    tag: v1.2.0-otel
+    # See the same note on backend.image.pullPolicy above.
     pullPolicy: IfNotPresent
   resources:
     limits:
@@ -79,6 +101,8 @@ worker:
       memory: 64Mi
   env:
     TASK_QUEUE_NAME: "task_queue"
+    OTEL_SERVICE_NAME: "taskflow-worker"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://observability-opentelemetry-collector.observability.svc.cluster.local:4317"
 
 
 # PostgreSQL

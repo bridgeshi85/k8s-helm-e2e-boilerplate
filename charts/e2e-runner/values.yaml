@@ -97,7 +97,12 @@ allure:
   image:
     repository: frankescobar/allure-docker-service
     tag: "latest"
-    pullPolicy: Always
+    # IfNotPresent so kubelet uses the image already cached on the kind node
+    # instead of re-resolving against Docker Hub (see stale outbound proxy
+    # gotcha in CLAUDE.md). Since tag is "latest", this also means a newer
+    # upstream "latest" won't be picked up automatically until the node's
+    # cached image is evicted or manually re-pulled/kind-loaded.
+    pullPolicy: IfNotPresent
 
   # 每隔多少秒扫描一次 allure-results 目录
   checkResultsEverySeconds: "10"

@@ -8,5 +8,11 @@ dependencies:
 - name: promtail
   repository: https://grafana.github.io/helm-charts
   version: 6.17.0
-digest: sha256:366d6b691671c4b700da174ed98ec916bb3004fb6004595180d288eb64e91886
-generated: "2026-02-17T18:32:36.409293+08:00"
+- name: tempo
+  repository: https://grafana.github.io/helm-charts
+  version: 1.24.4
+- name: opentelemetry-collector
+  repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+  version: 0.170.0
+digest: sha256:dfcef12fc87ee299726af0e53d909da99c218804aa3ad93cb391e06f4443e5a7
+generated: "2026-08-17T12:25:44.382386+08:00"

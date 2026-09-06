@@ -23,12 +23,23 @@
 
 ## 3) 运行方式
 
-```bash
-# 使用默认参数（BASE_URL 默认已含 /api，不要再手动拼一次）
-k6 run k6_load_test/taskflow-loadtest.js
+推荐用 wrapper 脚本，它会生成一个压测批次号并同时喂给 k6 指标（`--tag load_test_id=`）和请求 header（`X-Load-Test-ID` → OTel Baggage → span 属性 `test.load_test_id`），这样一批压测的 k6 曲线和它产生的 Trace 能在 Grafana 里用同一个 id 关联起来：
 
-# 自定义并发与时长
-BASE_URL=http://localhost:8080/api VUS=40 DURATION=5m SLEEP_SECONDS=0.1 k6 run k6_load_test/taskflow-loadtest.js
+```bash
+# 随机批次号
+./scripts/run-loadtest.sh
+
+# 固定批次号 / 自定义并发时长（透传给 k6 的参数直接跟在后面）
+LOAD_TEST_ID=k6-demo-1 BASE_URL=http://localhost:8080/api ./scripts/run-loadtest.sh --vus 50 --duration 3m
+```
+
+脚本会打印出本次的 `load_test_id` 以及对应的 Grafana / Tempo 过滤表达式。
+
+直接调 k6（不带批次关联，指标不会有 `load_test_id` label）：
+
+```bash
+k6 run k6_load_test/taskflow-loadtest.js
+BASE_URL=http://localhost:8080/api VUS=40 DURATION=5m k6 run k6_load_test/taskflow-loadtest.js
 ```
 
 ## 4) 推送指标到 Prometheus（供 Grafana `k6 Load Test` dashboard 使用）

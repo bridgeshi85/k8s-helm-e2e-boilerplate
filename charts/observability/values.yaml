@@ -81,6 +81,36 @@ kube-prometheus-stack:
     adminUser: admin
     adminPassword: strongpassword
 
+    # Tempo + Loki 目前都没有走 sidecar 自动发现，手动注册成 datasource
+    # （Loki 之前一直没配，顺手在这次一起补上）
+    additionalDataSources:
+      - name: Tempo
+        type: tempo
+        uid: tempo
+        access: proxy
+        url: http://observability-tempo:3200
+        jsonData:
+          # Tempo 日志面板里点 "Logs" 能跳转到 Loki 里对应 trace_id 的日志
+          tracesToLogsV2:
+            datasourceUid: loki
+            spanStartTimeShift: "-1h"
+            spanEndTimeShift: "1h"
+            filterByTraceID: true
+          serviceMap:
+            datasourceUid: prometheus
+      - name: Loki
+        type: loki
+        uid: loki
+        access: proxy
+        url: http://observability-loki-gateway
+        jsonData:
+          # Loki 日志里如果带 trace_id 字段，能一键跳到 Tempo 的对应 trace
+          derivedFields:
+            - datasourceUid: tempo
+              matcherRegex: 'trace_id=(\w+)'
+              name: TraceID
+              url: '$${__value.raw}'
+
   # 关掉这些在 Kind 里抓不到或者不需要的组件
   kubeEtcd:
     enabled: false
@@ -99,6 +129,48 @@ promtail:
     clients:
       - url: http://observability-loki-gateway.observability/loki/api/v1/push
         tenant_id: 1
+
+
+tempo:
+  enabled: true
+
+  tempo:
+    # 默认已经打开 receivers.otlp.protocols.{grpc:4317, http:4318}，不用额外配置
+    resources:
+      # 候选）下会被 OOMKilled，进入 crash-loop，调大到 1Gi。
+      limits:
+        cpu: 1000m      # [新增] 防止无限制占用，但给予充足计算空间
+        memory: 1.5Gi   # [修改] 配合高频并发，进一步放宽内存
+      requests:
+        cpu: 300m       # [修改] 保证基础计算资源，避免启动即节流
+        memory: 512Mi
+
+    # 默认 timeoutSeconds:5 / failureThreshold:3（约 30s 容忍窗口）在压测期间
+    # 反复查同一个 TraceQL（比如 Grafana 面板开着短 auto-refresh 盯
+    # test.load_test_id）导致查询变慢时太容易被打满，kubelet 会直接强杀重启，
+    # 反而在最需要看 trace 的时候把 Tempo 打断。放宽到 10s / 6 次失败（约 60s）。
+    livenessProbe:
+      httpGet:
+        path: /ready
+        port: 3200
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 10
+      failureThreshold: 6
+      successThreshold: 1
+    readinessProbe:
+      httpGet:
+        path: /ready
+        port: 3200
+      initialDelaySeconds: 20
+      periodSeconds: 10
+      timeoutSeconds: 10
+      failureThreshold: 6
+      successThreshold: 1
+
+  # sandbox 环境不挂 PVC，Pod 重启 trace 数据就丢，可接受
+  persistence:
+    enabled: false
 
 # Grafana Dashboards
 dashboards:
@@ -128,3 +200,76 @@ dashboards:
   # k6 Load Test Dashboard
   k6-load-test:
     enabled: true
+
+# ---------------------------------------------------------
+# OpenTelemetry Collector 配置 (统一网关)
+# ---------------------------------------------------------
+opentelemetry-collector:
+  enabled: true
+  mode: deployment
+  image:
+    repository: otel/opentelemetry-collector
+
+  # 资源限制策略
+  resources:
+    limits:
+      memory: 512Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+  # 让 Prometheus 自动发现并抓取 Collector 暴露的指标
+  # chart 默认的 ports.metrics(8888) 是 Collector 自身内部遥测端口，跟下面
+  # pipeline 里 `prometheus` exporter 监听的 8889（真正承载 backend/worker
+  # 业务指标）不是一回事；这里复用 "metrics" 这个端口名指向 8889，正好匹配
+  # chart 默认生成的 ServiceMonitor（endpoints: - port: metrics），否则
+  # Service/ServiceMonitor 不会暴露 8889，Prometheus 永远抓不到业务指标。
+  ports:
+    metrics:
+      enabled: true
+      containerPort: 8889
+      servicePort: 8889
+      protocol: TCP
+
+  serviceMonitor:
+    enabled: true
+
+  # 核心流水线配置
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch: {}
+      memory_limiter:
+        check_interval: 1s
+        # 设为 limit 的 80% 左右，防止 OOM
+        limit_mib: 400
+        spike_limit_mib: 100
+
+    exporters:
+      # Trace 导出：转发给集群内的 Tempo
+      otlp/tempo:
+        endpoint: observability-tempo.observability.svc.cluster.local:4317
+        tls:
+          insecure: true
+      
+      # Metrics 导出：将 OTLP 指标转化为 Prometheus 格式并暴露 8889 端口供抓取
+      prometheus:
+        endpoint: 0.0.0.0:8889
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/tempo]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [prometheus]

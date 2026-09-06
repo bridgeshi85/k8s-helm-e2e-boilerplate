@@ -10,6 +10,10 @@ class RequestIDFilter(logging.Filter):
 
     def filter(self, record):
         record.request_id = get_request_id()
+        # OTel LoggingInstrumentor 还没跑到时（比如模块导入期间的早期日志），
+        # otelTraceID 属性不存在，给个默认值避免 Formatter 因缺字段抛 KeyError
+        if not hasattr(record, "otelTraceID"):
+            record.otelTraceID = "0"
         return True
 
 
@@ -31,7 +35,7 @@ def setup_logging() -> None:
 
     # 定义日志格式化器 (Formatter)
     formatter = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)s | [%(request_id)s] | %(message)s",
+        fmt="%(asctime)s | %(levelname)s | [%(request_id)s] | trace_id=%(otelTraceID)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
 

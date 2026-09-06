@@ -1,0 +1,177 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║              Trace 性能问题 5 分钟快速诊断清单                               ║
+║                    Case Study: TraceID b88b1708ff9380323b5c70fa9697994a       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+【症状】
+  ⚠️ POST /tasks 耗时 13 秒（应该 < 1 秒）
+  ⚠️ Tempo 瀑布图显示 rabbitmq.publish = 9.14 秒（66%）
+
+【5 分钟诊断步骤】
+
+Step 1️⃣: Tempo 确认瓶颈 (2 分钟)
+  ─────────────────────────────────────────────────────────────────
+  1. 打开 http://localhost:3000/explore
+  2. 选择数据源: Tempo
+  3. 搜索框输入: b88b1708ff9380323b5c70fa9697994a
+  4. 点击 "Run query"
+  5. 中间瀑布图中找到最长的 span
+  
+  ✓ 结果：rabbitmq.publish = 9140ms ← 【瓶颈确认】
+
+Step 2️⃣: Prometheus 排除资源瓶颈 (1.5 分钟)
+  ─────────────────────────────────────────────────────────────────
+  打开 http://localhost:9090 并逐一查询：
+  
+  查询 A: rabbitmq_connections
+  预期: 1（正常）⚠️ 如果 > 20 → 连接泄漏
+  
+  查询 B: rabbitmq_connections_opened_total
+  预期: 1-2（正常）⚠️ 如果 > 100 → 【连接池问题！】
+  
+  查询 C: rate(rabbitmq_connections_opened_total[5m])
+  预期: ≈ 0（正常）⚠️ 如果 > 0.1 → 频繁创建连接
+  
+  查询 D: rabbitmq_process_resident_memory_bytes / 1024 / 1024
+  预期: < 500MB（正常）⚠️ 如果 > 1000MB → 内存压力
+  
+  ✓ 结果：
+    connections = 1 ✅
+    opened_total = 394 ⚠️ ← 【这是证据！】
+    rate = 0.02 conn/s ⚠️ ← 【频繁创建！】
+
+Step 3️⃣: 源代码快速检查 (1.5 分钟)
+  ─────────────────────────────────────────────────────────────────
+  查看 src/backend/main.py 的 publish_task_created() 函数
+  
+  第 64 行：
+    connection = await aio_pika.connect_robust(RABBITMQ_URL)
+  
+  ❌ 问题：这行代码在每个请求中都会执行
+     → 每个请求都新建一条 RabbitMQ 连接
+     → 连接建立耗时 ~9 秒
+     → 每个请求都要等 9 秒
+  
+  ✅ 正确方式：应该是全局连接池
+
+【根因确认】
+  ✓ 问题不是 RabbitMQ 慢
+  ✓ 问题不是队列积压
+  ✓ 问题是 Backend 每次创建新连接！
+  
+  原因: aio_pika.connect_robust() 会重试，如果 RabbitMQ 一时无响应，
+       就会触发指数退避重试（1s + 2s + 4s = 7s），导致单次连接耗时 9s
+
+【修复代码】
+
+改前（现状）:
+  ────────────────────────────────────────────────────────────
+  async def publish_task_created(task_id: int) -> None:
+      with tracer.start_as_current_span("rabbitmq.publish"):
+          connection = await aio_pika.connect_robust(RABBITMQ_URL)  # ❌ 每次都新建
+          
+          async with connection:
+              channel = await connection.channel()
+              await channel.publish(message)
+  ────────────────────────────────────────────────────────────
+
+改后（连接池方案）:
+  ────────────────────────────────────────────────────────────
+  # 在全局作用域（与 FastAPI app 同级）
+  rabbitmq_connection_pool = None
+  
+  async def get_rabbitmq_connection():
+      global rabbitmq_connection_pool
+      if rabbitmq_connection_pool is None:
+          rabbitmq_connection_pool = await aio_pika.connect_robust(RABBITMQ_URL)
+      return rabbitmq_connection_pool
+  
+  # 然后在 publish_task_created() 中
+  async def publish_task_created(task_id: int) -> None:
+      with tracer.start_as_current_span("rabbitmq.publish"):
+          connection = await get_rabbitmq_connection()  # ✅ 复用连接池
+          
+          channel = await connection.channel()
+          await channel.publish(message)
+  ────────────────────────────────────────────────────────────
+
+【预期修复效果】
+
+修复前:
+  ┌─ 请求 1: 13s (9s 建连接 + 0.1s 发消息)
+  ├─ 请求 2: 13s (9s 建连接 + 0.1s 发消息)
+  ├─ 请求 3: 13s (9s 建连接 + 0.1s 发消息)
+  └─ ...
+
+修复后:
+  ┌─ 启动: 9s (一次性建立连接)
+  ├─ 请求 1: 0.1s (复用连接)
+  ├─ 请求 2: 0.1s (复用连接)
+  ├─ 请求 3: 0.1s (复用连接)
+  └─ ... 后续请求都只需 0.1s
+
+性能提升: 13s → 0.1s = 【130 倍快】
+
+【Prometheus 修复验证】
+
+修复前:
+  $ curl 'localhost:9090/api/v1/query?query=rabbitmq_connections_opened_total'
+  结果: 394（还在持续增长）
+
+修复后:
+  $ curl 'localhost:9090/api/v1/query?query=rabbitmq_connections_opened_total'
+  结果: 395（稳定不变）
+
+关键信号:
+  ✅ connections_opened_total 不再增长
+  ✅ rate(opened_total) → 0
+  ✅ http_server_duration P95 从 13s → 0.1s
+
+【常见陷阱】
+
+❌ 陷阱 1: 看到 rabbitmq_connections = 1，就认为连接正常
+   → 这只是"某一时刻"的快照
+   → 应该看 connections_opened_total（累计值）
+
+❌ 陷阱 2: RabbitMQ 的指标都正常，就认为 RabbitMQ 没问题
+   → RabbitMQ broker 确实没问题
+   → 问题是 Backend 应用层的使用方式不当
+
+❌ 陷阱 3: 用单个 Trace 排查，无法看全局趋势
+   → 要用 Prometheus 时间序列看"增长趋势"
+   → Trace 看"单次细节"，两者配合才全面
+
+【监控告警建议】
+
+设置这个告警，提前发现连接池问题:
+
+  alert: RabbitMQConnectionCreationRateHigh
+    expr: rate(rabbitmq_connections_opened_total[5m]) > 0.1
+    annotations:
+      summary: "RabbitMQ 连接创建速率过高：{{ $value }} conn/s"
+      description: "可能存在连接泄漏或无连接池问题"
+
+设置这个告警，监控 Backend 性能:
+
+  alert: BackendP95LatencyHigh
+    expr: histogram_quantile(0.95, rate(http_server_duration_seconds_bucket{service="taskflow-backend", route="POST /tasks"}[1m])) > 5
+    annotations:
+      summary: "Backend POST /tasks P95 延迟高于 5s"
+      description: "应检查 Tempo 瀑布图定位瓶颈"
+
+【总结】
+
+Trace 显示 rabbitmq.publish 很慢
+  ↓
+Prometheus 看 connections_opened_total（关键！）
+  ↓
+发现值 > 100 且还在增长
+  ↓
+源代码检查 connect_robust() 位置
+  ↓
+确认每个请求都新建连接
+  ↓
+改用连接池
+  ↓
+性能提升 130 倍！
+

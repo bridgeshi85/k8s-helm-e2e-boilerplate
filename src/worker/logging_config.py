@@ -10,6 +10,8 @@ class RequestIDFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = get_request_id()
+        if not hasattr(record, "otelTraceID"):
+            record.otelTraceID = "0"
         return True
 
 
@@ -24,7 +26,7 @@ def setup_logging() -> None:
     root_logger.setLevel(log_level)
 
     formatter = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)s | [%(request_id)s] | %(message)s",
+        fmt="%(asctime)s | %(levelname)s | [%(request_id)s] | trace_id=%(otelTraceID)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
