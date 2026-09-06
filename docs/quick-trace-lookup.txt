@@ -1,0 +1,233 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║        通过 TraceID 在 Grafana 中查询 Tempo + Loki 的快速步骤               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+【前置准备】
+─────────────────────────────────────────────────────────────────────────────
+$ ./scripts/port-forward-all.sh
+
+打开浏览器：
+✓ Grafana: http://localhost:3000 (admin/strongpassword)
+✓ Prometheus: http://localhost:9090
+✓ Tempo 直接 API: http://localhost:3200
+
+
+【场景 1：快速查看某个 TraceID 的完整链路】
+─────────────────────────────────────────────────────────────────────────────
+
+步骤 1: 打开 Explore
+  ┌─ 左侧菜单 → Explore
+  └─ 或直接访问 http://localhost:3000/explore
+
+步骤 2: 选择 Tempo 数据源
+  ┌─ 顶部下拉框：选择 "Tempo"
+  └─ 确认你看到一个搜索框
+
+步骤 3: 输入 TraceID
+  ┌─ 搜索框：输入完整 TraceID
+  │  示例：b88b1708ff9380323b5c70fa9697994a
+  └─ 点击 "Run query"（或按 Ctrl+Enter）
+
+步骤 4: 查看结果
+  ┌─ 左侧：Service Graph（服务依赖）
+  ├─ 中间：Trace Timeline（瀑布图，显示每个 span 的耗时）
+  ├─ 右侧：Span List（所有 span 列表）
+  └─ 点击任何 span 展开查看属性：
+       • duration = 耗时
+       • trace_id = b88b1708ff9380323b5c70fa9697994a
+       • service.name = taskflow-backend / taskflow-worker
+       • span.name = POST /tasks / worker.process_task
+       • test.load_test_id = k6-1788700428042-qowmqc（压测批次）
+       • chaos.slow_query.injected = true/false（是否注入）
+
+
+【场景 2：查找所有符合条件的 Trace（批量搜索）】
+─────────────────────────────────────────────────────────────────────────────
+
+步骤 1: 打开 Tempo Explore
+  └─ 同上
+
+步骤 2: 切换查询模式为 TraceQL
+  └─ 点击搜索框上方的 "TraceQL" 按钮
+
+步骤 3: 输入 TraceQL 查询语句
+  
+  ┌─ 查找所有慢查询被注入的 trace：
+  │  { span.chaos.slow_query.injected = true }
+  │
+  ├─ 查找特定压测批次的所有 trace：
+  │  { span.test.load_test_id = "k6-1788700428042-qowmqc" }
+  │
+  ├─ 查找耗时超过 5 秒的 trace：
+  │  { duration > 5s }
+  │
+  └─ 组合查询（特定批次 + 慢查询 + 长耗时）：
+     { span.test.load_test_id = "k6-1788700428042-qowmqc" 
+       && span.chaos.slow_query.injected = true 
+       && duration > 3s }
+
+步骤 4: 按 "Run query"，会列出所有匹配的 trace
+  └─ 点击任何一条查看详情
+
+
+【场景 3：从 Trace 跳转到 Loki 查看日志】
+─────────────────────────────────────────────────────────────────────────────
+
+步骤 1: 打开某个 Trace（参考场景 1）
+
+步骤 2: 在 Trace 中找到任意 span，点击 span 卡片
+
+步骤 3: 在展开的详情面板右下角，寻找 "Logs" 或 "📋" 链接
+  └─ 点击即自动跳转到 Loki，并过滤该 trace 的所有日志
+
+【或】主动在 Loki 中搜索 TraceID：
+  ┌─ 左侧菜单 → Explore
+  ├─ 顶部数据源选择 "Loki"
+  ├─ 输入日志查询语句：
+  │  {namespace="taskflow",container="backend"} 
+  │  |= "b88b1708ff9380323b5c70fa9697994a"
+  │
+  │  或使用 JSON 字段过滤（更精确）：
+  │  {namespace="taskflow"} 
+  │  | json 
+  │  | trace_id="b88b1708ff9380323b5c70fa9697994a"
+  │
+  └─ 按 "Run query"，显示所有匹配的日志行
+
+
+【场景 4：按压测批次查所有日志】
+─────────────────────────────────────────────────────────────────────────────
+
+在 Loki 中输入：
+  {namespace="taskflow"} | json | load_test_id="k6-1788700428042-qowmqc"
+
+可查看该压测批次的所有日志（所有 pod、所有级别）
+
+
+【场景 5：同时查看 Trace + 日志 + 指标（Dashboard 方式）】
+─────────────────────────────────────────────────────────────────────────────
+
+这是最强大的方式（正是 loadtest-correlation dashboard 的目标）
+
+步骤 1: 创建/打开一个 Dashboard
+  └─ 顶部 "+" 按钮 → Dashboard → Add new panel
+
+步骤 2: 添加变量（用于存储 TraceID）
+  ┌─ 左侧齿轮 "Dashboard settings" → Variables
+  ├─ 新增变量，名称：trace_id
+  ├─ 类型：Text box
+  └─ 保存
+
+步骤 3: 添加多个 Panel
+
+  Panel A: Tempo Trace 详情
+    查询：{ traceID = "$trace_id" }
+    数据源：Tempo
+    显示：该 trace 的所有 span 瀑布图
+
+  Panel B: Loki 日志
+    查询：{namespace="taskflow"} | json | trace_id="$trace_id"
+    数据源：Loki
+    显示：该 trace 对应的所有日志
+
+  Panel C: Prometheus 时间线
+    查询：rate(http_server_duration_count{job=~".*backend.*"}[$__rate_interval])
+    数据源：Prometheus
+    显示：请求速率时间线
+
+步骤 4: 使用时
+  ┌─ 在 Dashboard 顶部的 trace_id 输入框粘贴 TraceID
+  ├─ 按回车或点击刷新
+  └─ 三个 Panel 会同时更新，显示：
+      • 该 trace 的 span 链路
+      • 同时间的日志
+      • 同时间的指标背景
+
+
+【快速排查 RabbitMQ 性能问题（实例）】
+─────────────────────────────────────────────────────────────────────────────
+
+TraceID: b88b1708ff9380323b5c70fa9697994a
+问题：为什么 `rabbitmq.publish` 耗时 9.14 秒？
+
+步骤 1: Tempo 查看 Span 瀑布图
+  ✓ 确认 span "rabbitmq.publish" 的 duration = 9140ms
+
+步骤 2: Loki 查看日志
+  {namespace="taskflow",container="backend"} | json | trace_id="b88b1708ff9380323b5c70fa9697994a"
+  
+  查找关键字：
+  • "Connecting to RabbitMQ" → 是否有多次连接？
+  • "Connection timeout" → 是否连接超时？
+  • "Channel opened" → 打开通道的耗时？
+  • "Message published" → 发布完成的时间戳？
+
+步骤 3: Prometheus 查看资源
+  rabbitmq_connections
+  → 该时间点连接数是否飙升？
+  
+  db_connection_pool_active
+  → 数据库连接池是否也满了（间接原因）？
+
+步骤 4: 对比多个 Trace
+  Tempo TraceQL:
+  { span.test.load_test_id = "k6-1788700428042-qowmqc" }
+  
+  → 该批次的所有 trace 都慢（系统问题）
+  → 还是只有某条特别慢（偶发问题）？
+
+
+【常用 Loki 查询模式速查】
+─────────────────────────────────────────────────────────────────────────────
+
+查找 TraceID：
+  {namespace="taskflow"} |= "b88b1708ff9380323b5c70fa9697994a"
+
+查找错误：
+  {namespace="taskflow",container=~"backend|worker"} |= "error"
+  
+查找异常堆栈：
+  {namespace="taskflow"} |= "traceback"
+
+查找特定级别日志：
+  {namespace="taskflow"} |= "WARN"
+  
+使用 JSON 字段过滤：
+  {namespace="taskflow"} | json | trace_id="xxx" | status_code="500"
+
+统计错误数：
+  sum(count_over_time({namespace="taskflow"} |= "error" [5m]))
+
+
+【常用 Prometheus 查询速查】
+─────────────────────────────────────────────────────────────────────────────
+
+慢查询注入情况：
+  increase(chaos_slow_query_injected_total{injected="true"}[5m])
+
+RabbitMQ 连接数：
+  rabbitmq_connections
+
+DB 连接池使用率：
+  db_connection_pool_active / 20 * 100
+
+Backend HTTP 延迟 P95：
+  histogram_quantile(0.95, rate(http_server_duration_bucket{job=~".*backend.*"}[5m]))
+
+Worker 处理速率：
+  rate(worker_tasks_processed_total[1m])
+
+
+【键盘快捷键】
+─────────────────────────────────────────────────────────────────────────────
+
+Explore 中：
+  Ctrl+Enter  → 执行查询
+  Ctrl+K      → 打开命令面板
+  Ctrl+Shift+D → 切换深色模式
+
+Dashboard 中：
+  T           → 打开时间选择器
+  D           → 打开刷新菜单
+  Shift+P     → 切换到编辑模式
+
