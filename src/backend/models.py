@@ -128,6 +128,13 @@ meter.create_observable_gauge(
     description="Total number of database connections in the pool (active + idle)"
 )
 
+# [新增] OTel Counter for chaos slow query injection
+chaos_slow_query_injected = meter.create_counter(
+    name="chaos_slow_query_injected",
+    description="Chaos slow query injection attempts (true/false branches)",
+)
+
+
 # ---------------------------------------------------------
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -143,8 +150,10 @@ def maybe_inject_slow_query(db, span):
         span.set_attribute("chaos.slow_query.seconds", seconds)
         logger.warning(f"Injecting {seconds}s slow query into DB transaction...")
         db.execute(text("SELECT pg_sleep(:s)"), {"s": seconds})
+        chaos_slow_query_injected.add(1, {"injected": "true"})
     else:
         span.set_attribute("chaos.slow_query.injected", False)
+        chaos_slow_query_injected.add(1, {"injected": "false"})
 
 def get_db():
     db = SessionLocal()
