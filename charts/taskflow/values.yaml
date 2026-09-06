@@ -5,7 +5,7 @@ backend:
   replicaCount: 1
   image:
     repository: gto310/taskflow-backend
-    tag: v1.1.9-otel
+    tag: v1.2.0-otel
     # IfNotPresent so local dev iteration can `kind load docker-image` a
     # rebuilt image straight into the node without a Docker Hub round trip
     # (see "Remote kind cluster" in CLAUDE.md). If this chart is ever used
@@ -89,7 +89,7 @@ worker:
   replicaCount: 1
   image:
     repository: gto310/taskflow-worker
-    tag: v1.1.9-otel
+    tag: v1.2.0-otel
     # See the same note on backend.image.pullPolicy above.
     pullPolicy: IfNotPresent
   resources:
